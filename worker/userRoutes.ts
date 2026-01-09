@@ -221,6 +221,20 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             }, { status: 500 });
         }
     });
+
+    /**
+     * Forensic Scrubber Self-Test
+     * GET /api/chat/:sessionId/scrub/test
+     */
+    app.get('/api/chat/:sessionId/scrub/test', async (c) => {
+        try {
+            const result = await ForensicScrubber.runSelfTest();
+            return c.json({ success: true, data: result });
+        } catch (error) {
+            return c.json({ success: false, error: 'Self-test failed' }, { status: 500 });
+        }
+    });
+
     // Example route - you can remove this
     app.get('/api/test', (c) => c.json({ success: true, data: { name: 'this works' }}));
     

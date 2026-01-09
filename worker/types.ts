@@ -17,9 +17,17 @@ export interface ScrubResponse {
   scrubbedText: string;
   tokenMap: Record<string, string>;
   confidence: number;
+  testResults?: {
+    passed: boolean;
+    timestamp: number;
+    sampleUsed: string;
+    rulesEvaluated: number;
+  };
 }
-export interface ScrubRequest {
-  text: string;
+export interface ForensicRule {
+  pattern: RegExp;
+  replacementLabel: string;
+  confidenceWeight: number;
 }
 export interface Message {
   role: 'user' | 'assistant' | 'system';

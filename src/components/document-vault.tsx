@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +21,7 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubInput, setScrubInput] = useState('');
   const [scrubResult, setScrubResult] = useState<{ text: string; map: Record<string, string>; conf: number } | null>(null);
+  const [testReport, setTestReport] = useState<any>(null);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [newDoc, setNewDoc] = useState({
@@ -28,6 +29,22 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
     type: 'EOC' as InsuranceDocumentType,
     content: ''
   });
+
+  useEffect(() => {
+    const autoRun = async () => {
+      const res = await scrubService.runTest();
+      if (res.success && res.data) {
+        setTestReport(res.data.testResults);
+        setScrubResult({ 
+          text: res.data.scrubbedText, 
+          map: res.data.tokenMap, 
+          conf: res.data.confidence 
+        });
+      }
+    };
+    autoRun();
+  }, []);
+
   const handleAdd = async () => {
     if (!newDoc.title || !newDoc.content) {
       toast.error('Title and content are required');
@@ -77,6 +94,14 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
       throw new Error('Upload failed');
     }
   };
+  const handleTrySample = async () => {
+    const sample = await scrubService.getCorpusSample();
+    if (sample) {
+      setScrubInput(sample);
+      toast.info("Synthetic corpus sample loaded");
+    }
+  };
+
   const handleTestScrub = async () => {
     if (!scrubInput.trim()) return;
     setIsScrubbing(true);
@@ -168,18 +193,32 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
       )}
       <Card className="border-emerald-500/20 bg-emerald-500/5 shadow-soft">
         <CardHeader>
-          <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            Forensic Scrubber Test-Bed
-          </CardTitle>
-          <CardDescription className="text-[11px]">Verify zero-knowledge PII de-identification before policy registration.</CardDescription>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                Forensic Scrubber V2.2 Test-Bed
+              </CardTitle>
+              <CardDescription className="text-[11px]">HMAC-SHA256 salted pseudonymization with synthetic corpus verification.</CardDescription>
+            </div>
+            {testReport?.passed && (
+              <Badge className="bg-emerald-600 text-white border-0 text-[10px] animate-pulse">
+                V2.2 VALIDATION PASS
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase text-muted-foreground">Raw Data Input</label>
-              <Textarea 
-                placeholder="Paste sample text with SSN, Email, or DOB..." 
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">Raw Data Input</label>
+                <Button variant="link" onClick={handleTrySample} className="h-auto p-0 text-[10px] text-blue-600 uppercase font-bold">
+                  <Sparkles className="h-3 w-3 mr-1" /> Try Sample
+                </Button>
+              </div>
+              <Textarea
+                placeholder="Paste sample text with SSN, Email, or DOB..."
                 className="h-32 text-xs font-mono"
                 value={scrubInput}
                 onChange={(e) => setScrubInput(e.target.value)}
@@ -192,7 +231,15 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
             <div className="space-y-2">
               <label className="text-[10px] font-bold uppercase text-muted-foreground">Forensic Output</label>
               <div className="h-32 rounded-md border bg-background p-3 overflow-y-auto font-mono text-[10px] whitespace-pre-wrap">
-                {scrubResult ? scrubResult.text : <span className="text-muted-foreground italic">Awaiting de-identification...</span>}
+                {scrubResult ? (
+                  scrubResult.text.split(/(\[PSEUDO-[A-Z0-9]+\])/).map((part, i) => (
+                    <span key={i} className={part.startsWith('[PSEUDO-') ? "text-emerald-600 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-0.5 rounded" : ""}>
+                      {part}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-muted-foreground italic">Awaiting de-identification...</span>
+                )}
               </div>
               {scrubResult && (
                 <div className="p-2 bg-emerald-100/50 dark:bg-emerald-950/20 rounded border border-emerald-500/20 flex justify-between items-center">
