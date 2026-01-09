@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Loader2, Info, FileSearch } from 'lucide-react';
+import { Send, Bot, User, Loader2, Info, FileSearch, ShieldCheck, SearchCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { chatService } from '@/lib/chat';
-import type { Message } from '../../worker/types';
-export function ChatInterface() {
+import type { Message, InsuranceDocument } from '../../worker/types';
+interface ChatInterfaceProps {
+  activeDocuments?: InsuranceDocument[];
+}
+export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,7 +37,6 @@ export function ChatInterface() {
     setInput('');
     setLoading(true);
     setStreamingContent('');
-    // Pre-optimistic update would require creating a Message object locally
     try {
       await chatService.sendMessage(userMsg, undefined, (chunk) => {
         setStreamingContent(prev => prev + chunk);
@@ -52,11 +54,20 @@ export function ChatInterface() {
       <div className="p-4 border-b flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-2">
           <FileSearch className="h-5 w-5 text-blue-500" />
-          <span className="font-semibold text-sm">Forensic Audit Session</span>
+          <span className="font-semibold text-sm">Forensic Audit Console</span>
         </div>
-        <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">
-          Plan Context Active
-        </Badge>
+        <div className="flex gap-2">
+          {activeDocuments.length > 0 ? (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 gap-1 flex items-center">
+              <ShieldCheck className="h-3 w-3" />
+              {activeDocuments.length} Document(s) Loaded
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">
+              General Knowledge Mode
+            </Badge>
+          )}
+        </div>
       </div>
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-6 max-w-3xl mx-auto">
@@ -64,9 +75,9 @@ export function ChatInterface() {
             <div className="text-center py-12 space-y-4">
               <Bot className="h-12 w-12 mx-auto text-blue-200" />
               <div className="space-y-2">
-                <p className="text-lg font-medium">Legacy Health Insurance Navigator</p>
+                <p className="text-lg font-medium">Senior Insurance Auditor Initialized</p>
                 <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                  Paste a medical bill, describe a service you're planning, or ask a question about your coverage.
+                  Provide an EOC, medical bill, or EOB for forensic analysis. Data Primacy is currently enabled.
                 </p>
               </div>
             </div>
@@ -84,25 +95,25 @@ export function ChatInterface() {
               >
                 <div className={cn(
                   "h-8 w-8 rounded-full flex items-center justify-center shrink-0 border",
-                  m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white"
+                  m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white shadow-glow"
                 )}>
                   {m.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
                 <div className={cn(
                   "p-4 rounded-2xl max-w-[85%] text-sm shadow-sm",
-                  m.role === 'user' 
-                    ? "bg-muted rounded-tr-none" 
-                    : "bg-background border rounded-tl-none"
+                  m.role === 'user'
+                    ? "bg-muted rounded-tr-none"
+                    : "bg-background border rounded-tl-none border-l-4 border-l-blue-500"
                 )}>
-                  <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans">
+                  <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans leading-relaxed">
                     {m.content}
                   </div>
                   {m.toolCalls && m.toolCalls.length > 0 && (
                     <div className="mt-4 pt-4 border-t flex flex-col gap-2">
                       {m.toolCalls.map((tc, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs text-blue-500 font-mono">
-                          <Info className="h-3 w-3" />
-                          <span>CONSULTING_TOOL: {tc.name}</span>
+                        <div key={i} className="flex items-center gap-2 text-[10px] text-blue-500 font-mono font-bold uppercase tracking-wider">
+                          <SearchCode className="h-3 w-3" />
+                          <span>Forensic_Module: {tc.name}</span>
                         </div>
                       ))}
                     </div>
@@ -115,8 +126,8 @@ export function ChatInterface() {
                 <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-blue-600 text-white">
                   <Bot className="h-4 w-4" />
                 </div>
-                <div className="p-4 rounded-2xl bg-background border rounded-tl-none max-w-[85%] text-sm shadow-sm">
-                  <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap">
+                <div className="p-4 rounded-2xl bg-background border rounded-tl-none border-l-4 border-l-blue-500 max-w-[85%] text-sm shadow-sm">
+                  <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap leading-relaxed">
                     {streamingContent}
                   </div>
                 </div>
@@ -130,7 +141,7 @@ export function ChatInterface() {
               </div>
               <div className="p-4 bg-muted/50 rounded-2xl animate-pulse flex items-center gap-3">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-xs font-medium text-muted-foreground">Navigator is reviewing forensics...</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Auditing Documents...</span>
               </div>
             </div>
           )}
@@ -148,20 +159,20 @@ export function ChatInterface() {
                 handleSend();
               }
             }}
-            placeholder="Describe your billing issue or paste an EOC excerpt..."
-            className="min-h-[100px] resize-none pr-12 focus-visible:ring-blue-500 bg-muted/20"
+            placeholder="Auditor query (e.g. 'Audit this bill against my EOC')..."
+            className="min-h-[100px] resize-none pr-12 focus-visible:ring-blue-500 bg-muted/20 text-sm"
           />
-          <Button 
-            onClick={handleSend} 
+          <Button
+            onClick={handleSend}
             disabled={!input.trim() || loading}
             size="icon"
-            className="absolute right-2 bottom-2 rounded-full h-8 w-8 bg-blue-600 hover:bg-blue-700"
+            className="absolute right-2 bottom-2 rounded-full h-8 w-8 bg-blue-600 hover:bg-blue-700 shadow-glow"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
-        <p className="text-[10px] text-center text-muted-foreground mt-2">
-          Shift + Enter for new line. Legacy Navigator preserves your conversation state automatically.
+        <p className="text-[10px] text-center text-muted-foreground mt-2 uppercase tracking-tight">
+          Legacy Auditor preserves context via Durable Object state.
         </p>
       </div>
     </div>

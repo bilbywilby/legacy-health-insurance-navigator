@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DashboardMetrics } from '@/components/dashboard-metrics';
 import { ChatInterface } from '@/components/chat-interface';
+import { DocumentVault } from '@/components/document-vault';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ShieldAlert, FileText, Activity, CreditCard, PlusCircle } from 'lucide-react';
 import { chatService } from '@/lib/chat';
-import { toast } from 'sonner';
+import type { InsuranceDocument } from '../../worker/types';
 export function HomePage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [insuranceData, setInsuranceData] = useState({
@@ -16,35 +17,38 @@ export function HomePage() {
     oopMax: 6500,
     oopUsed: 2100,
   });
+  const [documents, setDocuments] = useState<InsuranceDocument[]>([]);
+  const fetchState = async () => {
+    const res = await chatService.getMessages();
+    if (res.success && res.data) {
+      if (res.data.insuranceState) setInsuranceData(res.data.insuranceState);
+      if (res.data.documents) setDocuments(res.data.documents);
+    }
+  };
   useEffect(() => {
-    const fetchState = async () => {
-      const res = await chatService.getMessages();
-      if (res.success && res.data?.insuranceState) {
-        setInsuranceData(res.data.insuranceState);
-      }
-    };
     fetchState();
   }, []);
   return (
-    <AppLayout container>
+    <AppLayout container onVaultClick={() => setActiveTab('vault')}>
       <div className="space-y-8 animate-fade-in">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Legacy Health Navigator</h1>
-            <p className="text-muted-foreground">Certified Medical Billing Forensics & Strategic Advocacy</p>
+            <p className="text-muted-foreground">Forensic Billing Audit & Strategic Financial Advocacy</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Secure HIPAA-Grade Mode</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Audit Mode: Active</span>
           </div>
         </header>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+          <TabsList className="grid w-full grid-cols-3 md:w-[600px]">
             <TabsTrigger value="dashboard">Command Dashboard</TabsTrigger>
             <TabsTrigger value="chat">Forensic Chat</TabsTrigger>
+            <TabsTrigger value="vault">Document Vault</TabsTrigger>
           </TabsList>
           <TabsContent value="dashboard" className="space-y-6">
-            <DashboardMetrics 
+            <DashboardMetrics
               deductibleTotal={insuranceData.deductibleTotal}
               deductibleUsed={insuranceData.deductibleUsed}
               oopMax={insuranceData.oopMax}
@@ -69,7 +73,7 @@ export function HomePage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Recent Alerts</CardTitle>
-                  <CardDescription>Automated forensic scanning results</CardDescription>
+                  <CardDescription>Forensic scanning results</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -79,7 +83,7 @@ export function HomePage() {
                       </div>
                       <div>
                         <p className="font-medium">Potential Unbundling Detected</p>
-                        <p className="text-muted-foreground">Possible error in recent CPT 99214 coding.</p>
+                        <p className="text-muted-foreground text-xs">Possible coding error in recent provider claim.</p>
                       </div>
                     </div>
                   </div>
@@ -91,22 +95,33 @@ export function HomePage() {
                   <CardDescription>Active Insurance Documents</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between text-sm p-2 border rounded bg-muted/30">
-                    <span className="flex items-center gap-2"><FileText className="h-4 w-4" /> 2024_EOC_PPO.pdf</span>
-                    <span className="text-emerald-500 text-xs font-bold uppercase">Active</span>
-                  </div>
-                  <Button variant="ghost" className="w-full text-blue-500 hover:text-blue-600">Manage Vault</Button>
+                  {documents.length > 0 ? (
+                    documents.slice(0, 2).map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between text-xs p-2 border rounded bg-muted/30">
+                        <span className="flex items-center gap-2 truncate max-w-[150px]"><FileText className="h-3 w-3" /> {doc.title}</span>
+                        <span className="text-emerald-500 font-bold uppercase text-[9px]">Verified</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No active documents for Data Primacy.</p>
+                  )}
+                  <Button variant="ghost" className="w-full text-blue-500 hover:text-blue-600 text-sm" onClick={() => setActiveTab('vault')}>
+                    Manage Vault
+                  </Button>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
           <TabsContent value="chat" className="min-h-[600px] border rounded-xl bg-card">
-            <ChatInterface />
+            <ChatInterface activeDocuments={documents} />
+          </TabsContent>
+          <TabsContent value="vault">
+            <DocumentVault documents={documents} onRefresh={fetchState} />
           </TabsContent>
         </Tabs>
-        <footer className="pt-8 border-t text-center text-xs text-muted-foreground space-y-2">
-          <p>The Legacy Navigator is an AI assistant. While specialized in medical billing logic, it does not provide legal or financial advice. All results should be verified by a human professional.</p>
-          <p className="font-medium">IMPORTANT: AI processing limits apply. Verify all insurance claims with your provider directly.</p>
+        <footer className="pt-8 border-t text-center text-[10px] text-muted-foreground space-y-2 uppercase tracking-tight">
+          <p>Legacy Navigator utilizes Forensic LLM logic. Not legal or licensed financial advice.</p>
+          <p className="font-medium text-blue-500">HIPAA-GRADE CONTEXTUAL ISOLATION ACTIVE • RATE LIMITS APPLY</p>
         </footer>
       </div>
     </AppLayout>

@@ -24,6 +24,15 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
   result?: unknown;
 }
+export type InsuranceDocumentType = 'SBC' | 'EOC' | 'EOB' | 'FORMULARY' | 'BILL';
+export interface InsuranceDocument {
+  id: string;
+  title: string;
+  content: string;
+  type: InsuranceDocumentType;
+  uploadDate: number;
+  status: 'parsing' | 'active' | 'verified';
+}
 export interface InsuranceState {
   deductibleTotal: number;
   deductibleUsed: number;
@@ -37,6 +46,8 @@ export interface ChatState {
   model: string;
   streamingMessage?: string;
   insuranceState?: InsuranceState;
+  documents: InsuranceDocument[];
+  activeDocumentId?: string;
 }
 export interface SessionInfo {
   id: string;

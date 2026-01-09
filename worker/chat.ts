@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall } from './types';
+import type { Message, ToolCall, InsuranceDocument } from './types';
 import { getToolDefinitions, executeTool } from './tools';
 import { ChatCompletionMessageFunctionToolCall } from 'openai/resources/index.mjs';
 export class ChatHandler {
@@ -15,12 +15,13 @@ export class ChatHandler {
   async processMessage(
     message: string,
     conversationHistory: Message[],
+    documents: InsuranceDocument[] = [],
     onChunk?: (chunk: string) => void
   ): Promise<{
     content: string;
     toolCalls?: ToolCall[];
   }> {
-    const messages = this.buildConversationMessages(message, conversationHistory);
+    const messages = this.buildConversationMessages(message, conversationHistory, documents);
     const toolDefinitions = await getToolDefinitions();
     if (onChunk) {
       const stream = await this.client.chat.completions.create({
@@ -31,7 +32,7 @@ export class ChatHandler {
         max_completion_tokens: 16000,
         stream: true,
       });
-      return this.handleStreamResponse(stream, message, conversationHistory, onChunk);
+      return this.handleStreamResponse(stream, message, conversationHistory, documents, onChunk);
     }
     const completion = await this.client.chat.completions.create({
       model: this.model,
@@ -41,12 +42,13 @@ export class ChatHandler {
       max_tokens: 16000,
       stream: false
     });
-    return this.handleNonStreamResponse(completion, message, conversationHistory);
+    return this.handleNonStreamResponse(completion, message, conversationHistory, documents);
   }
   private async handleStreamResponse(
     stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
     message: string,
     conversationHistory: Message[],
+    documents: InsuranceDocument[],
     onChunk: (chunk: string) => void
   ) {
     let fullContent = '';
@@ -87,7 +89,7 @@ export class ChatHandler {
     }
     if (accumulatedToolCalls.length > 0) {
       const executedTools = await this.executeToolCalls(accumulatedToolCalls);
-      const finalResponse = await this.generateToolResponse(message, conversationHistory, accumulatedToolCalls, executedTools);
+      const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, accumulatedToolCalls, executedTools);
       return { content: finalResponse, toolCalls: executedTools };
     }
     return { content: fullContent };
@@ -95,7 +97,8 @@ export class ChatHandler {
   private async handleNonStreamResponse(
     completion: OpenAI.Chat.Completions.ChatCompletion,
     message: string,
-    conversationHistory: Message[]
+    conversationHistory: Message[],
+    documents: InsuranceDocument[]
   ) {
     const responseMessage = completion.choices[0]?.message;
     if (!responseMessage) {
@@ -105,7 +108,7 @@ export class ChatHandler {
       return { content: responseMessage.content || 'I apologize, but I encountered an issue.' };
     }
     const toolCalls = await this.executeToolCalls(responseMessage.tool_calls as ChatCompletionMessageFunctionToolCall[]);
-    const finalResponse = await this.generateToolResponse(message, conversationHistory, responseMessage.tool_calls, toolCalls);
+    const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, responseMessage.tool_calls, toolCalls);
     return { content: finalResponse, toolCalls };
   }
   private async executeToolCalls(openAiToolCalls: ChatCompletionMessageFunctionToolCall[]): Promise<ToolCall[]> {
@@ -124,6 +127,7 @@ export class ChatHandler {
   private async generateToolResponse(
     userMessage: string,
     history: Message[],
+    documents: InsuranceDocument[],
     openAiToolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[],
     toolResults: ToolCall[]
   ): Promise<string> {
@@ -144,27 +148,28 @@ export class ChatHandler {
     });
     return followUpCompletion.choices[0]?.message?.content || 'Strategic step compiled.';
   }
-  private buildConversationMessages(userMessage: string, history: Message[]) {
+  private buildConversationMessages(userMessage: string, history: Message[], documents: InsuranceDocument[]) {
+    const docContext = documents.length > 0 
+      ? `## REFERENCE CONTEXT (Data Primacy Documents)\n${documents.map(d => `[DOCUMENT: ${d.title} (${d.type})]\n${d.content}\n---`).join('\n')}`
+      : 'No specific policy documents have been uploaded yet. Encourage the user to provide EOC/SBC for precise forensics.';
     const systemPrompt = `
-      # MASTER PERSONA: Legacy Health Insurance Navigator
-      You are an elite AI agent specialized in Medical Billing Forensics, Insurance Contract Analysis, and Strategic Patient Financial Advocacy. Your mission is to minimize out-of-pocket costs for patients by identifying billing errors, unbundling, and misapplied plan rules.
-      ## KNOWLEDGE HIERARCHY (Strict Priority)
-      1. **User-Provided Insurance Documents**: EOC (Evidence of Coverage), SBC (Summary of Benefits).
-      2. **Regulatory Standards**: No Surprises Act, ERISA Title I, ACA Consumer Protections.
-      3. **Coding Standards**: Current Procedural Terminology (CPT) guidelines, ICD-10-CM specificity.
-      4. **General Healthcare Logic**: Standard practice for billing and insurance verification.
-      ## CORE OPERATIONAL PROTOCOLS
-      - **Forensic Auditing**: When a user provides bill details, look for "Balance Billing", "Unbundling" (billing parts of a procedure separately), or "Upcoding".
-      - **Strategic Planning**: If a user is planning care, help them maximize "In-Network" benefits and calculate precise out-of-pocket exposure using their Deductible and OOP Max status.
-      - **Regulatory Leverage**: Refer to specific laws (e.g., No Surprises Act) when a provider's billing seems non-compliant.
-      - **Actionable Outputs**: Always provide a "Next Strategic Step" (e.g., a specific script for a phone call to the insurer, or a bulleted list for a written appeal).
+      # MASTER PERSONA: Senior Health Insurance Auditor and Medical Billing Advocate
+      You are an elite AI agent specialized in Forensic Analysis of Summary of Benefits (SBC), Evidence of Coverage (EOC), and Explanation of Benefits (EOB). Your mission is to protect the patient's finances.
+      ## CORE OPERATING PRINCIPLES
+      - **Data Primacy**: Prioritize uploaded policy documents over general knowledge. If a conflict exists, quote the specific page/section from the user's PDF/Document.
+      - **Financial Precision**: Calculate patient responsibility using mathematical logic. Provide the "why" behind every number.
+      - **Non-Evaluative Stance**: Provide mathematical and contractual facts. Do not label plans as "good" or "bad." 
+      ## OPERATIONAL MODULES
+      - **Audit Mode**: When an EOB or bill is provided, cross-reference CPT/HCPCS codes against the plan’s coverage for that "Place of Service". Check for "Balance Billing" or "Unbundling".
+      - **Appeal Generation**: If a claim is denied, identify the specific "Denial Code." Draft a formal appeal letter citing "Medical Necessity" definitions found in the uploaded EOC.
+      - **Alternative Care Analysis**: For drugs/procedures, search documents for "Step Therapy" or "Prior Authorization" protocols.
       ## INTERACTION STYLE
-      - **Tone**: Medical Grade Fintech - precise, authoritative, calm, and protective of the patient's finances.
       - **Format**: Use JetBrains Mono for financial figures, CPT codes, and specific calculations.
-      - **Clarity**: Explain complex insurance jargon (e.g., "Coinsurance vs Copay") only if relevant to the user's specific financial situation.
+      - **Actionable Outputs**: Every response must include a "Next Strategic Step" (e.g., call script or appeal bullet points).
+      - **Tone**: Medical Grade Fintech - precise, authoritative, calm.
+      ${docContext}
       ## LIMITATIONS
-      - You do not provide legal advice or clinical medical advice.
-      - You are a financial advocate. Focus on the money.
+      - You do not provide legal or clinical medical advice. You are a financial advocate.
     `.trim();
     return [
       { role: 'system' as const, content: systemPrompt },

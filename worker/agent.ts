@@ -1,6 +1,6 @@
 import { Agent } from 'agents';
 import type { Env } from './core-utils';
-import type { ChatState, InsuranceState } from './types';
+import type { ChatState, InsuranceState, InsuranceDocument } from './types';
 import { ChatHandler } from './chat';
 import { API_RESPONSES } from './config';
 import { createMessage, createStreamResponse, createEncoder } from './utils';
@@ -11,6 +11,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     sessionId: crypto.randomUUID(),
     isProcessing: false,
     model: 'google-ai-studio/gemini-2.5-flash',
+    documents: [],
     insuranceState: {
       deductibleTotal: 3000,
       deductibleUsed: 1350,
@@ -35,6 +36,9 @@ export class ChatAgent extends Agent<Env, ChatState> {
       if (method === 'POST' && url.pathname === '/chat') {
         return this.handleChatMessage(await request.json());
       }
+      if (method === 'POST' && url.pathname === '/documents') {
+        return this.handleDocumentUpload(await request.json());
+      }
       if (method === 'POST' && url.pathname === '/insurance') {
         return this.handleInsuranceUpdate(await request.json());
       }
@@ -58,6 +62,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     const userMessage = createMessage('user', message.trim());
     this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
     try {
+      // Pass the current documents to the handler for context injection
       if (stream) {
         const { readable, writable } = new TransformStream();
         const writer = writable.getWriter();
@@ -67,6 +72,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
             const response = await this.chatHandler!.processMessage(
               message,
               this.state.messages,
+              this.state.documents,
               (chunk) => {
                 writer.write(encoder.encode(chunk));
               }
@@ -81,7 +87,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
         })();
         return createStreamResponse(readable);
       }
-      const response = await this.chatHandler!.processMessage(message, this.state.messages);
+      const response = await this.chatHandler!.processMessage(message, this.state.messages, this.state.documents);
       const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
       this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
       return Response.json({ success: true, data: this.state });
@@ -89,6 +95,20 @@ export class ChatAgent extends Agent<Env, ChatState> {
       this.setState({ ...this.state, isProcessing: false });
       return Response.json({ success: false, error: API_RESPONSES.PROCESSING_ERROR }, { status: 500 });
     }
+  }
+  private handleDocumentUpload(doc: Omit<InsuranceDocument, 'uploadDate' | 'status'>): Response {
+    const newDoc: InsuranceDocument = {
+      ...doc,
+      uploadDate: Date.now(),
+      status: 'active'
+    };
+    const updatedDocs = [...(this.state.documents || []), newDoc];
+    this.setState({
+      ...this.state,
+      documents: updatedDocs,
+      activeDocumentId: newDoc.id
+    });
+    return Response.json({ success: true, data: this.state });
   }
   private handleInsuranceUpdate(body: Partial<InsuranceState>): Response {
     if (!this.state.insuranceState) return Response.json({ success: false }, { status: 400 });

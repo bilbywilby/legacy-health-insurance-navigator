@@ -11,9 +11,29 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarGroupLabel,
+  SidebarMenuAction,
 } from "@/components/ui/sidebar";
 import { Progress } from "@/components/ui/progress";
+import { chatService } from "@/lib/chat";
+
 export function AppSidebar(): JSX.Element {
+  const [deductibleData, setDeductibleData] = React.useState({ used: 1350, total: 3000 });
+
+  React.useEffect(() => {
+    const load = async () => {
+      const res = await chatService.getMessages();
+      if (res.success && res.data?.insuranceState) {
+        setDeductibleData({
+          used: res.data.insuranceState.deductibleUsed,
+          total: res.data.insuranceState.deductibleTotal
+        });
+      }
+    };
+    load();
+  }, []);
+
+  const percentage = Math.round((deductibleData.used / deductibleData.total) * 100);
+
   return (
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader>
@@ -68,10 +88,10 @@ export function AppSidebar(): JSX.Element {
           </div>
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>$1,350 used</span>
-              <span>45%</span>
+              <span>${deductibleData.used.toLocaleString()} used</span>
+              <span>{percentage}%</span>
             </div>
-            <Progress value={45} className="h-1 bg-blue-100 dark:bg-blue-900" />
+            <Progress value={percentage} className="h-1 bg-blue-100 dark:bg-blue-900" />
           </div>
         </div>
       </SidebarFooter>

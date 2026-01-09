@@ -8,6 +8,7 @@ type AppLayoutProps = {
   container?: boolean;
   className?: string;
   contentClassName?: string;
+  onVaultClick?: () => void;
 };
 export function AppLayout({ children, container = false, className, contentClassName }: AppLayoutProps): JSX.Element {
   return (
