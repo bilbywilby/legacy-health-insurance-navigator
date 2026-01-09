@@ -1,7 +1,7 @@
-import type { Message, ChatState, ToolCall, SessionInfo, InsuranceDocument, InsuranceState, AuditEntry } from '../../worker/types';
+import type { Message, ChatState, ToolCall, SessionInfo, InsuranceDocument, InsuranceState, AuditEntry, ForensicOutput } from '../../worker/types';
 export interface ChatResponse {
   success: boolean;
-  data?: ChatState;
+  data?: ChatState & { forensicData?: ForensicOutput };
   error?: string;
 }
 export const MODELS = [
@@ -25,6 +25,7 @@ class ChatService {
       });
       return await response.json();
     } catch (error) {
+      console.error('Context sync error:', error);
       return { success: false, error: 'Context sync failed' };
     }
   }
@@ -33,6 +34,7 @@ class ChatService {
       const response = await fetch(`${this.baseUrl}/audit`);
       return await response.json();
     } catch (error) {
+      console.error('Audit logs fetch error:', error);
       return { success: false };
     }
   }
@@ -49,16 +51,16 @@ class ChatService {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      // Post-process to extract forensic metadata if present
       if (data.success && data.data?.messages) {
         const lastMsg = data.data.messages[data.data.messages.length - 1];
         if (lastMsg && lastMsg.role === 'assistant') {
-          const match = lastMsg.content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/);
+          const match = lastMsg.content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/m);
           if (match) {
             try {
-              const forensic = JSON.parse(match[1]);
-              console.log("Forensic Audit Metadata:", forensic);
-            } catch (e) {}
+              data.data.forensicData = JSON.parse(match[1]);
+            } catch (e) {
+              console.warn("Forensic JSON Parsing Failed:", e, match[1]);
+            }
           }
         }
       }
