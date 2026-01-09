@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileLock2, ShieldCheck, Plus, Trash2, FileText, AlertCircle, Sparkles } from 'lucide-react';
+import { FileLock2, ShieldCheck, Plus, Trash2, FileText, AlertCircle, Sparkles, Loader2 } from 'lucide-react';
 import { chatService } from '@/lib/chat';
 import type { InsuranceDocument, InsuranceDocumentType, InsuranceState } from '../../worker/types';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ interface DocumentVaultProps {
 export function DocumentVault({ documents, onRefresh, insuranceState }: DocumentVaultProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [newDoc, setNewDoc] = useState({
     title: '',
     type: 'EOC' as InsuranceDocumentType,
@@ -41,6 +42,22 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
       onRefresh();
     } else {
       toast.error('Failed to upload document');
+    }
+  };
+  const handleDelete = async (id: string) => {
+    setIsDeleting(id);
+    try {
+      const res = await chatService.deleteDocument(id);
+      if (res.success) {
+        toast.success('Document removed from context');
+        onRefresh();
+      } else {
+        toast.error('Failed to delete document');
+      }
+    } catch (err) {
+      toast.error('Error deleting document');
+    } finally {
+      setIsDeleting(null);
     }
   };
   const handleTemplateAdd = async (template: any) => {
@@ -79,8 +96,8 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
           )}
         </div>
       </div>
-      <VaultTemplates 
-        isOpen={isTemplatesOpen} 
+      <VaultTemplates
+        isOpen={isTemplatesOpen}
         onOpenChange={setIsTemplatesOpen}
         insuranceState={insuranceState}
         onAdd={handleTemplateAdd}
@@ -156,8 +173,14 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
                   <div className="h-1 w-1 rounded-full bg-emerald-600 animate-pulse" />
                   Context Active
                 </span>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Trash2 className="h-4 w-4" />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleDelete(doc.id)}
+                  disabled={isDeleting === doc.id}
+                >
+                  {isDeleting === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 </Button>
               </div>
             </CardContent>

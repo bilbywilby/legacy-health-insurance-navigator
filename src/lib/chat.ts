@@ -5,9 +5,9 @@ export interface ChatResponse {
   error?: string;
 }
 export const MODELS = [
-  { id: 'google-ai-studio/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'google-ai-studio/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-  { id: 'google-ai-studio/gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+  { id: 'google-ai-studio/gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+  { id: 'google-ai-studio/gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+  { id: 'google-ai-studio/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash' },
 ];
 class ChatService {
   private sessionId: string;
@@ -63,6 +63,16 @@ class ChatService {
       return { success: false, error: 'Failed to upload document' };
     }
   }
+  async deleteDocument(id: string): Promise<ChatResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/documents/${id}`, {
+        method: 'DELETE',
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: 'Failed to delete document' };
+    }
+  }
   async getMessages(): Promise<ChatResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/messages`);
@@ -89,7 +99,6 @@ class ChatService {
     this.sessionId = sessionId;
     this.baseUrl = `/api/chat/${sessionId}`;
   }
-  // Session Management
   async createSession(title?: string, sessionId?: string, firstMessage?: string): Promise<{ success: boolean; data?: { sessionId: string; title: string }; error?: string }> {
     try {
       const response = await fetch('/api/sessions', {

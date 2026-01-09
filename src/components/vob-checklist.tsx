@@ -6,12 +6,12 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/card';
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Copy, Printer, PhoneCall, ShieldCheck } from 'lucide-react';
+import { Copy, Printer, PhoneCall } from 'lucide-react';
 import { toast } from 'sonner';
 interface VobProps {
   isOpen: boolean;
@@ -24,7 +24,7 @@ interface VobProps {
 export function VobChecklist({ isOpen, onClose, insuranceInfo }: VobProps) {
   if (!isOpen) return null;
   const copyScript = () => {
-    const script = `Hello, my name is [Your Name]. I am calling to verify coverage for a [Procedure Name] with NPI [NPI Number]. My policy ID is ${insuranceInfo.policyId}. 
+    const script = `Hello, my name is [Your Name]. I am calling to verify coverage for a [Procedure Name] with NPI [NPI Number]. My policy ID is ${insuranceInfo.policyId}.
     1. Is this provider In-Network?
     2. Is Pre-Authorization required?
     3. What is my remaining deductible?
@@ -33,15 +33,17 @@ export function VobChecklist({ isOpen, onClose, insuranceInfo }: VobProps) {
     toast.success("Script copied to clipboard");
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background border rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="p-6 border-b bg-blue-50 dark:bg-blue-950/20">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+        <DialogHeader className="p-6 border-b bg-blue-50 dark:bg-blue-950/20">
           <div className="flex items-center gap-2 text-blue-600 mb-1">
             <PhoneCall className="h-5 w-5" />
-            <h2 className="text-xl font-bold">Verification of Benefits (VOB)</h2>
+            <DialogTitle className="text-xl font-bold">Verification of Benefits (VOB)</DialogTitle>
           </div>
-          <p className="text-sm text-muted-foreground">Pre-service audit script and checklist.</p>
-        </div>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Pre-service audit script and checklist.
+          </DialogDescription>
+        </DialogHeader>
         <ScrollArea className="flex-1 p-6">
           <div className="space-y-6">
             <div className="p-4 bg-muted/30 rounded-lg border-l-4 border-blue-500 font-mono text-xs space-y-2">
@@ -66,13 +68,13 @@ export function VobChecklist({ isOpen, onClose, insuranceInfo }: VobProps) {
               ].map((item, i) => (
                 <div key={i} className="flex items-center space-x-2">
                   <Checkbox id={`step-${i}`} />
-                  <Label htmlFor={`step-${i}`} className="text-sm">{item}</Label>
+                  <Label htmlFor={`step-${i}`} className="text-sm cursor-pointer">{item}</Label>
                 </div>
               ))}
             </section>
           </div>
         </ScrollArea>
-        <div className="p-6 border-t flex justify-between gap-3 bg-muted/10">
+        <DialogFooter className="p-6 border-t flex justify-between gap-3 bg-muted/10">
           <Button variant="ghost" onClick={onClose}>Dismiss</Button>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={copyScript}>
@@ -82,8 +84,8 @@ export function VobChecklist({ isOpen, onClose, insuranceInfo }: VobProps) {
               <Printer className="mr-2 h-4 w-4" /> Print VOB
             </Button>
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

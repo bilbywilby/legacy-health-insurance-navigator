@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Loader2, FileSearch, ShieldCheck, SearchCode } from 'lucide-react';
+import { Send, Bot, User, FileSearch, ShieldCheck, SearchCode, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -49,6 +49,18 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
       setLoading(false);
     }
   };
+  const renderContent = (content: string) => {
+    return content.split('`').map((part, i) => {
+      if (i % 2 === 1) {
+        return (
+          <code key={i} className="bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-900/50">
+            {part}
+          </code>
+        );
+      }
+      return part;
+    });
+  };
   return (
     <div className="flex flex-col h-[700px] bg-background">
       <div className="p-4 border-b flex items-center justify-between bg-muted/20">
@@ -90,7 +102,7 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
                 </div>
                 <div className={cn("p-4 rounded-2xl max-w-[85%] text-sm shadow-sm", m.role === 'user' ? "bg-muted rounded-tr-none" : "bg-card border rounded-tl-none border-l-4 border-l-blue-500")}>
                   <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans leading-relaxed">
-                    {m.content.split('`').map((part, i) => i % 2 === 1 ? <code key={i} className="bg-muted px-1 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold">{part}</code> : part)}
+                    {renderContent(m.content)}
                   </div>
                   {m.toolCalls && m.toolCalls.length > 0 && (
                     <div className="mt-4 pt-4 border-t flex flex-col gap-2">
@@ -106,10 +118,13 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
             ))}
             {streamingContent && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-blue-600 text-white"><Bot className="h-4 w-4" /></div>
+                <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-blue-600 text-white">
+                  <Bot className="h-4 w-4" />
+                </div>
                 <div className="p-4 rounded-2xl bg-card border rounded-tl-none border-l-4 border-l-blue-500 max-w-[85%] text-sm shadow-sm">
                   <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap leading-relaxed">
-                    {streamingContent}
+                    {renderContent(streamingContent)}
+                    <span className="inline-block w-1.5 h-4 ml-1 bg-blue-500 animate-pulse align-middle" />
                   </div>
                 </div>
               </motion.div>
@@ -120,9 +135,25 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
       </ScrollArea>
       <div className="p-4 border-t bg-background">
         <div className="max-w-3xl mx-auto flex gap-3 relative">
-          <Textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="Auditor query (e.g. 'Identify CPT codes for a lumbar MRI')..." className="min-h-[100px] resize-none pr-12 focus-visible:ring-blue-500 bg-muted/20 text-sm" />
-          <Button onClick={handleSend} disabled={!input.trim() || loading} size="icon" className="absolute right-2 bottom-2 rounded-full h-8 w-8 bg-blue-600 hover:bg-blue-700 shadow-glow">
-            <Send className="h-4 w-4" />
+          <Textarea 
+            value={input} 
+            onChange={(e) => setInput(e.target.value)} 
+            onKeyDown={(e) => { 
+              if (e.key === 'Enter' && !e.shiftKey) { 
+                e.preventDefault(); 
+                handleSend(); 
+              } 
+            }} 
+            placeholder="Auditor query (e.g. 'Identify CPT codes for a lumbar MRI')..." 
+            className="min-h-[100px] resize-none pr-12 focus-visible:ring-blue-500 bg-muted/20 text-sm" 
+          />
+          <Button 
+            onClick={handleSend} 
+            disabled={!input.trim() || loading} 
+            size="icon" 
+            className="absolute right-2 bottom-2 rounded-full h-8 w-8 bg-blue-600 hover:bg-blue-700 shadow-glow"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
       </div>

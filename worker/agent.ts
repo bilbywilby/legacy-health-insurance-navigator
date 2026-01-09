@@ -10,7 +10,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     messages: [],
     sessionId: crypto.randomUUID(),
     isProcessing: false,
-    model: 'google-ai-studio/gemini-2.5-flash',
+    model: 'google-ai-studio/gemini-1.5-flash',
     documents: [],
     insuranceState: {
       deductibleTotal: 3000,
@@ -38,6 +38,10 @@ export class ChatAgent extends Agent<Env, ChatState> {
       }
       if (method === 'POST' && url.pathname === '/documents') {
         return this.handleDocumentUpload(await request.json());
+      }
+      if (method === 'DELETE' && url.pathname.startsWith('/documents/')) {
+        const docId = url.pathname.split('/').pop();
+        if (docId) return this.handleDocumentDelete(docId);
       }
       if (method === 'POST' && url.pathname === '/insurance') {
         return this.handleInsuranceUpdate(await request.json());
@@ -78,10 +82,10 @@ export class ChatAgent extends Agent<Env, ChatState> {
               }
             );
             const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
-            this.setState({ 
-              ...this.state, 
-              messages: [...this.state.messages, assistantMessage], 
-              isProcessing: false 
+            this.setState({
+              ...this.state,
+              messages: [...this.state.messages, assistantMessage],
+              isProcessing: false
             });
           } catch (e) {
             console.error('Streaming error:', e);
@@ -92,8 +96,8 @@ export class ChatAgent extends Agent<Env, ChatState> {
         return createStreamResponse(readable);
       }
       const response = await this.chatHandler!.processMessage(
-        message, 
-        this.state.messages, 
+        message,
+        this.state.messages,
         this.state.documents,
         this.state.insuranceState
       );
@@ -116,6 +120,15 @@ export class ChatAgent extends Agent<Env, ChatState> {
       ...this.state,
       documents: updatedDocs,
       activeDocumentId: newDoc.id
+    });
+    return Response.json({ success: true, data: this.state });
+  }
+  private handleDocumentDelete(docId: string): Response {
+    const updatedDocs = (this.state.documents || []).filter(d => d.id !== docId);
+    this.setState({
+      ...this.state,
+      documents: updatedDocs,
+      activeDocumentId: this.state.activeDocumentId === docId ? undefined : this.state.activeDocumentId
     });
     return Response.json({ success: true, data: this.state });
   }
