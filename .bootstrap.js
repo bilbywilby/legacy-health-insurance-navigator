@@ -78,7 +78,8 @@ function updateWranglerJsonc() {
 
 function runSetupCommands() {
     const commands = [
-    "bun add html2canvas jspdf"
+    "bun add html2canvas jspdf",
+    "bun add immer"
 ];
     
     if (commands.length === 0) {
