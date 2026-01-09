@@ -36,8 +36,10 @@ export class ForensicEngine {
     reason?: string;
     severity: 'info' | 'warning' | 'critical';
   } {
-    // Example: Plan is PPO but bill indicates OON Co-insurance rates
-    if (state.planType === 'PPO' && bill.liability_calc > 500 && bill.fmv_variance > 30) {
+    // Safely handle optional fmv_variance using nullish coalescing
+    const variance = bill.fmv_variance ?? 0;
+    const liability = bill.liability_calc ?? 0;
+    if (state.planType === 'PPO' && liability > 500 && variance > 30) {
       return {
         hasDiscrepancy: true,
         reason: "Liability exceeds PPO Network Benefit Schedule limits.",
@@ -50,20 +52,33 @@ export class ForensicEngine {
    * Calculates annual spend projections.
    */
   static calculateBurnRate(logs: any[], oopMax: number): { dailyBurn: number, projectedOopDate: number } {
-    const sortedLogs = [...logs].sort((a, b) => a.timestamp - b.timestamp);
-    if (sortedLogs.length < 2) return { dailyBurn: 0, projectedOopDate: Date.now() };
+    const validLogs = (logs || []).filter(l => l && l.timestamp);
+    const endOfYear = new Date(new Date().getFullYear(), 11, 31).getTime();
+    if (validLogs.length < 2) {
+      return { dailyBurn: 0, projectedOopDate: endOfYear };
+    }
+    const sortedLogs = [...validLogs].sort((a, b) => a.timestamp - b.timestamp);
     const firstDate = sortedLogs[0].timestamp;
     const lastDate = sortedLogs[sortedLogs.length - 1].timestamp;
+    // Minimum 1 day difference to prevent division by zero
     const daysDiff = Math.max(1, (lastDate - firstDate) / (1000 * 60 * 60 * 24));
-    const totalSpent = sortedLogs.reduce((acc, log) => acc + (log.metadata?.liability_calc || 0), 0);
+    const totalSpent = sortedLogs.reduce((acc, log) => {
+      const amount = log.metadata?.liability_calc ?? 0;
+      return acc + amount;
+    }, 0);
     const dailyBurn = totalSpent / daysDiff;
-    const projectedOopDate = Date.now() + (oopMax / (dailyBurn || 1)) * (1000 * 60 * 60 * 24);
+    // If no burn rate, project to end of year
+    if (dailyBurn <= 0) return { dailyBurn: 0, projectedOopDate: endOfYear };
+    const remainingOop = Math.max(0, oopMax - totalSpent);
+    const daysToOop = remainingOop / dailyBurn;
+    const projectedOopDate = Math.min(endOfYear, Date.now() + (daysToOop * 24 * 60 * 60 * 1000));
     return { dailyBurn, projectedOopDate };
   }
   /**
    * Generates a unique Strategic Dispute Token.
    */
   static generateDisputeToken(variance: number, bridgeFlag: boolean = false): string | null {
+    // Consistent threshold handling (>=)
     if (variance < 10 && !bridgeFlag) return null;
     let prefix = bridgeFlag ? 'BRIDGE-DS' : (variance >= CRITICAL_OVERCHARGE_THRESHOLD ? 'NAV-DS-CRIT' : 'NAV-DS-STD');
     const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();

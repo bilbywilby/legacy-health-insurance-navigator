@@ -25,27 +25,24 @@ export function AppealGenerator() {
   const [hydratedText, setHydratedText] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const selectedAudit = auditLogs.find(log => log.id === auditId);
-  const forensicData = selectedAudit?.metadata as any;
+  const selectedAudit = auditLogs?.find(log => log.id === auditId);
+  const forensicData = (selectedAudit?.metadata as any) || {
+    cpt: 'N/A',
+    fmv_variance: 0,
+    dispute_token: 'NAV-V2-GENERATED',
+    liability_calc: 0
+  };
   useEffect(() => {
     if (isOpen) {
       const text = getHydratedTemplate(selectedTemplateId, {
-        cpt: forensicData?.cpt || '99214',
-        variance: forensicData?.fmv_variance || 0,
-        disputeToken: forensicData?.dispute_token || 'NAV-FORENSIC-001',
-        liability: forensicData?.liability_calc || 0
+        cpt: forensicData.cpt,
+        variance: forensicData.fmv_variance,
+        disputeToken: forensicData.dispute_token,
+        liability: forensicData.liability_calc
       });
       setHydratedText(text);
     }
-  }, [
-    isOpen,
-    selectedTemplateId,
-    auditId,
-    forensicData?.cpt,
-    forensicData?.fmv_variance,
-    forensicData?.dispute_token,
-    forensicData?.liability_calc
-  ]);
+  }, [isOpen, selectedTemplateId, auditId, forensicData]);
   const handleCopy = () => {
     navigator.clipboard.writeText(hydratedText);
     toast.success("Appeal letter copied to clipboard");
@@ -53,20 +50,22 @@ export function AppealGenerator() {
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      // Final PII check before output
+      // Step 1: Deep PII scrub of the entire hydrated text before generation
       const scrubRes = await scrubService.scrubText(hydratedText);
       if (scrubRes.success && scrubRes.data) {
         setHydratedText(scrubRes.data.scrubbedText);
+        // Step 2: PDF generation with specific forensic metadata
         await pdfService.generateAppealPDF('appeal-preview-content', {
-          title: `Medical Appeal - ${forensicData?.dispute_token || 'Audit'}`,
-          subject: 'Billing Dispute and Forensic Audit Report',
-          author: 'Legacy Navigator',
-          disputeToken: forensicData?.dispute_token || 'NAV-V2'
+          title: `Forensic Audit Appeal - ${forensicData.dispute_token}`,
+          subject: 'Formal Billing Dispute / NSA Protection',
+          author: 'Legacy Navigator V2.2',
+          disputeToken: forensicData.dispute_token || 'NAV-STRAT-ID'
         });
         toast.success("Forensic PDF exported successfully");
       }
     } catch (err) {
-      toast.error("Failed to generate PDF");
+      console.error('PDF Export Failed:', err);
+      toast.error("Failed to generate PDF. Check browser permissions.");
     } finally {
       setIsExporting(false);
     }
@@ -76,13 +75,14 @@ export function AppealGenerator() {
     const scrubRes = await scrubService.scrubText(hydratedText);
     if (scrubRes.success && scrubRes.data) {
       setHydratedText(scrubRes.data.scrubbedText);
-      toast.success("Zero-Knowledge scrub verified. Printing...");
+      toast.success("Zero-Knowledge scrub verified. Opening print dialog...");
       setTimeout(() => {
         window.print();
         setIsPrinting(false);
       }, 500);
     } else {
       setIsPrinting(false);
+      toast.error("Scrub verification failed. Printing aborted for security.");
     }
   };
   return (
@@ -119,17 +119,24 @@ export function AppealGenerator() {
                 </p>
               </button>
             ))}
-            <div className="mt-6 p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
-              <div className="flex items-center gap-2 text-blue-600 mb-2">
-                <ShieldCheck className="h-4 w-4" />
-                <span className="text-[10px] font-bold uppercase">Data Primacy</span>
+            {!selectedAudit && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                <p className="text-[9px] text-amber-700 leading-tight">
+                  No audit selected. Displaying generic forensic pattern. Select an event from the dashboard for deterministic data.
+                </p>
               </div>
-              <p className="text-[9px] text-muted-foreground leading-relaxed">
-                All templates automatically integrate <span className="text-blue-600 font-bold">ERISA Sec. 502</span> and <span className="text-blue-600 font-bold">NSA</span> legal citations.
-              </p>
-            </div>
+            )}
           </div>
-          <div className="flex-1 flex flex-col bg-white dark:bg-slate-950">
+          <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 relative">
+            {(isExporting || isPrinting) && (
+              <div className="absolute inset-0 z-50 bg-white/60 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                  <span className="text-xs font-bold uppercase tracking-widest animate-pulse">Scrubbing PII...</span>
+                </div>
+              </div>
+            )}
             <div className="p-4 border-b flex items-center justify-between bg-muted/5 print-hide">
               <Badge variant="outline" className="font-mono text-[10px] font-bold text-emerald-600 border-emerald-500/20 bg-emerald-500/5">
                 <ShieldCheck className="h-3 w-3 mr-1" /> FORENSIC VERIFIED
@@ -149,7 +156,7 @@ export function AppealGenerator() {
                     </div>
                   </div>
                   <div className="text-right text-[10px] font-mono text-muted-foreground">
-                    REPORT-ID: {forensicData?.dispute_token || 'N/A'}<br />
+                    REPORT-ID: {forensicData.dispute_token}<br />
                     SYNC-DATE: {new Date().toISOString()}
                   </div>
                 </div>
@@ -170,7 +177,7 @@ export function AppealGenerator() {
             <Button
               className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 font-bold text-xs uppercase"
               onClick={handleExportPDF}
-              disabled={isExporting}
+              disabled={isExporting || isPrinting}
             >
               {isExporting ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <FileDown className="h-3 w-3 mr-2" />}
               Export PDF
@@ -178,7 +185,7 @@ export function AppealGenerator() {
             <Button
               className="h-9 px-4 bg-blue-600 hover:bg-blue-700 font-bold text-xs uppercase shadow-glow"
               onClick={handlePrint}
-              disabled={isPrinting}
+              disabled={isExporting || isPrinting}
             >
               {isPrinting ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Printer className="h-3 w-3 mr-2" />}
               Print
