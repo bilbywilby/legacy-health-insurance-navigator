@@ -5,16 +5,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileLock2, ShieldCheck, Plus, Trash2, FileText, AlertCircle } from 'lucide-react';
+import { FileLock2, ShieldCheck, Plus, Trash2, FileText, AlertCircle, Sparkles } from 'lucide-react';
 import { chatService } from '@/lib/chat';
-import type { InsuranceDocument, InsuranceDocumentType } from '../../worker/types';
+import type { InsuranceDocument, InsuranceDocumentType, InsuranceState } from '../../worker/types';
 import { toast } from 'sonner';
+import { VaultTemplates } from './vault-templates';
 interface DocumentVaultProps {
   documents: InsuranceDocument[];
   onRefresh: () => void;
+  insuranceState?: InsuranceState;
 }
-export function DocumentVault({ documents, onRefresh }: DocumentVaultProps) {
+export function DocumentVault({ documents, onRefresh, insuranceState }: DocumentVaultProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [newDoc, setNewDoc] = useState({
     title: '',
     type: 'EOC' as InsuranceDocumentType,
@@ -40,6 +43,19 @@ export function DocumentVault({ documents, onRefresh }: DocumentVaultProps) {
       toast.error('Failed to upload document');
     }
   };
+  const handleTemplateAdd = async (template: any) => {
+    const res = await chatService.addDocument({
+      id: crypto.randomUUID(),
+      title: template.title,
+      type: template.type,
+      content: template.content
+    });
+    if (res.success) {
+      onRefresh();
+    } else {
+      throw new Error('Upload failed');
+    }
+  };
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
@@ -50,14 +66,27 @@ export function DocumentVault({ documents, onRefresh }: DocumentVaultProps) {
           </h2>
           <p className="text-muted-foreground">Stored context for Data Primacy auditing</p>
         </div>
-        {!isAdding && (
-          <Button onClick={() => setIsAdding(true)} className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="mr-2 h-4 w-4" /> Add Policy Text
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {!isAdding && (
+            <>
+              <Button variant="outline" onClick={() => setIsTemplatesOpen(true)} className="border-blue-500/20 text-blue-600 hover:bg-blue-50">
+                <Sparkles className="mr-2 h-4 w-4" /> Load Legacy Templates
+              </Button>
+              <Button onClick={() => setIsAdding(true)} className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="mr-2 h-4 w-4" /> Add Policy Text
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+      <VaultTemplates 
+        isOpen={isTemplatesOpen} 
+        onOpenChange={setIsTemplatesOpen}
+        insuranceState={insuranceState}
+        onAdd={handleTemplateAdd}
+      />
       {isAdding && (
-        <Card className="border-blue-500/30 bg-blue-50/5 dark:bg-blue-950/5">
+        <Card className="border-blue-500/30 bg-blue-50/5 dark:bg-blue-950/5 animate-scale-in">
           <CardHeader>
             <CardTitle className="text-lg">Register New Insurance Document</CardTitle>
             <CardDescription>Paste the text content from your policy PDF or EOB statement.</CardDescription>
@@ -66,8 +95,8 @@ export function DocumentVault({ documents, onRefresh }: DocumentVaultProps) {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Document Title</label>
-                <Input 
-                  placeholder="e.g. 2024 United PPO EOC" 
+                <Input
+                  placeholder="e.g. 2024 United PPO EOC"
                   value={newDoc.title}
                   onChange={e => setNewDoc(prev => ({ ...prev, title: e.target.value }))}
                 />
@@ -90,40 +119,43 @@ export function DocumentVault({ documents, onRefresh }: DocumentVaultProps) {
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Paste Document Content</label>
-              <Textarea 
+              <Textarea
                 className="min-h-[200px] font-mono text-sm"
-                placeholder="Paste key sections here (e.g. 'Covered Services', 'Cost Sharing'...)"
+                placeholder="Paste key sections here..."
                 value={newDoc.content}
                 onChange={e => setNewDoc(prev => ({ ...prev, content: e.target.value }))}
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="ghost" onClick={() => setIsAdding(false)}>Cancel</Button>
-              <Button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700">Verify & Store</Button>
+              <Button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 font-bold">Verify & Store</Button>
             </div>
           </CardContent>
         </Card>
       )}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {documents.map(doc => (
-          <Card key={doc.id} className="group relative">
+          <Card key={doc.id} className="group relative border-l-4 border-l-blue-500/50 hover:border-l-blue-500 transition-all">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <Badge variant="secondary" className="text-[10px] uppercase font-bold">{doc.type}</Badge>
+                <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider">{doc.type}</Badge>
                 <ShieldCheck className="h-4 w-4 text-emerald-500" />
               </div>
-              <CardTitle className="text-base truncate mt-2">{doc.title}</CardTitle>
+              <CardTitle className="text-base truncate mt-2 font-bold">{doc.title}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-4">
                 <FileText className="h-3 w-3" />
                 <span>Added {new Date(doc.uploadDate).toLocaleDateString()}</span>
               </div>
-              <div className="mt-4 p-2 bg-muted/30 rounded text-[10px] text-muted-foreground line-clamp-3 font-mono">
+              <div className="p-2 bg-muted/30 rounded text-[10px] text-muted-foreground line-clamp-3 font-mono border">
                 {doc.content}
               </div>
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-emerald-600 uppercase">Context Active</span>
+                <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
+                  <div className="h-1 w-1 rounded-full bg-emerald-600 animate-pulse" />
+                  Context Active
+                </span>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -132,15 +164,24 @@ export function DocumentVault({ documents, onRefresh }: DocumentVaultProps) {
           </Card>
         ))}
         {documents.length === 0 && !isAdding && (
-          <Card className="col-span-full border-dashed p-12 text-center flex flex-col items-center justify-center space-y-4">
-            <div className="h-12 w-12 rounded-full bg-blue-50 dark:bg-blue-950/20 flex items-center justify-center">
-              <AlertCircle className="h-6 w-6 text-blue-500" />
+          <Card className="col-span-full border-dashed p-12 text-center flex flex-col items-center justify-center space-y-6">
+            <div className="h-16 w-16 rounded-full bg-blue-50 dark:bg-blue-950/20 flex items-center justify-center">
+              <AlertCircle className="h-8 w-8 text-blue-500" />
             </div>
-            <div className="space-y-1">
-              <p className="font-semibold">Vault is Empty</p>
-              <p className="text-sm text-muted-foreground">Add policy documents to enable Data Primacy audits.</p>
+            <div className="space-y-2">
+              <p className="text-xl font-bold">Your Vault is Empty</p>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                Add policy documents or use a Legacy Template to enable high-fidelity auditing for this session.
+              </p>
             </div>
-            <Button variant="outline" onClick={() => setIsAdding(true)}>Begin Registration</Button>
+            <div className="flex gap-4">
+              <Button variant="outline" onClick={() => setIsTemplatesOpen(true)} className="border-blue-500/20 text-blue-600">
+                <Sparkles className="mr-2 h-4 w-4" /> Use Templates
+              </Button>
+              <Button onClick={() => setIsAdding(true)} className="bg-blue-600">
+                <Plus className="mr-2 h-4 w-4" /> Manual Add
+              </Button>
+            </div>
           </Card>
         )}
       </div>

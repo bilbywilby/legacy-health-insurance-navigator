@@ -62,7 +62,6 @@ export class ChatAgent extends Agent<Env, ChatState> {
     const userMessage = createMessage('user', message.trim());
     this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
     try {
-      // Pass the current documents to the handler for context injection
       if (stream) {
         const { readable, writable } = new TransformStream();
         const writer = writable.getWriter();
@@ -73,12 +72,17 @@ export class ChatAgent extends Agent<Env, ChatState> {
               message,
               this.state.messages,
               this.state.documents,
+              this.state.insuranceState,
               (chunk) => {
                 writer.write(encoder.encode(chunk));
               }
             );
             const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
-            this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
+            this.setState({ 
+              ...this.state, 
+              messages: [...this.state.messages, assistantMessage], 
+              isProcessing: false 
+            });
           } catch (e) {
             console.error('Streaming error:', e);
           } finally {
@@ -87,7 +91,12 @@ export class ChatAgent extends Agent<Env, ChatState> {
         })();
         return createStreamResponse(readable);
       }
-      const response = await this.chatHandler!.processMessage(message, this.state.messages, this.state.documents);
+      const response = await this.chatHandler!.processMessage(
+        message, 
+        this.state.messages, 
+        this.state.documents,
+        this.state.insuranceState
+      );
       const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
       this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
       return Response.json({ success: true, data: this.state });

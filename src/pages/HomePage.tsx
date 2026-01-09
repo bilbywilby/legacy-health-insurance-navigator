@@ -5,18 +5,18 @@ import { ChatInterface } from '@/components/chat-interface';
 import { DocumentVault } from '@/components/document-vault';
 import { VobChecklist } from '@/components/vob-checklist';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ShieldAlert, FileText, Activity, Code2, AlertTriangle } from 'lucide-react';
 import { chatService } from '@/lib/chat';
 import { useAppStore } from '@/lib/store';
-import type { InsuranceDocument } from '../../worker/types';
+import type { InsuranceDocument, InsuranceState } from '../../worker/types';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const isVobOpen = useAppStore(s => s.isVobOpen);
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
-  const [insuranceData, setInsuranceData] = useState({
+  const [insuranceData, setInsuranceData] = useState<InsuranceState>({
     deductibleTotal: 3000,
     deductibleUsed: 1350,
     oopMax: 6500,
@@ -117,12 +117,12 @@ export function HomePage() {
             <ChatInterface activeDocuments={documents} />
           </TabsContent>
           <TabsContent value="vault">
-            <DocumentVault documents={documents} onRefresh={fetchState} />
+            <DocumentVault documents={documents} onRefresh={fetchState} insuranceState={insuranceData} />
           </TabsContent>
         </Tabs>
-        <VobChecklist 
-          isOpen={isVobOpen} 
-          onClose={() => setIsVobOpen(false)} 
+        <VobChecklist
+          isOpen={isVobOpen}
+          onClose={() => setIsVobOpen(false)}
           insuranceInfo={{ policyId: "LEG-99238421", groupNumber: "GRP-NAV-01" }}
         />
         <footer className="pt-8 border-t text-center text-[10px] text-muted-foreground space-y-2 uppercase tracking-tight">

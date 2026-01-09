@@ -15,9 +15,14 @@ export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopU
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
   const dedPct = calculatePercentage(deductibleUsed, deductibleTotal);
   const oopPct = calculatePercentage(oopUsed, oopMax);
-  const dedData = [{ value: deductibleUsed }, { value: Math.max(0, deductibleTotal - deductibleUsed) }];
-  const oopData = [{ value: oopUsed }, { value: Math.max(0, oopMax - oopUsed) }];
-  const COLORS = ['#3B82F6', '#E2E8F0'];
+  const dedData = [
+    { value: deductibleUsed },
+    { value: Math.max(0, deductibleTotal - deductibleUsed) }
+  ];
+  const oopData = [
+    { value: oopUsed },
+    { value: Math.max(0, oopMax - oopUsed) }
+  ];
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
       <Card className="col-span-1 border-blue-500/20">
@@ -29,16 +34,30 @@ export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopU
           <div className="h-[140px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={dedData} cx="50%" cy="50%" innerRadius={45} outerRadius={55} paddingAngle={5} dataKey="value" startAngle={90} endAngle={450}>
+                <Pie
+                  data={dedData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={55}
+                  paddingAngle={5}
+                  dataKey="value"
+                  startAngle={90}
+                  endAngle={450}
+                >
                   <Cell fill="#3B82F6" />
                   <Cell fill="#F1F5F9" />
-                  <Label value={`${dedPct}%`} position="center" className="fill-foreground font-bold text-lg" />
+                  <Label
+                    value={`${dedPct}%`}
+                    position="center"
+                    className="fill-foreground font-bold text-lg"
+                  />
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="text-center mt-2">
-            <p className="text-2xl font-bold font-mono">{formatCurrency(deductibleUsed)}</p>
+          <div className="text-center mt-2 font-mono">
+            <p className="text-2xl font-bold">{formatCurrency(deductibleUsed)}</p>
             <p className="text-xs text-muted-foreground">of {formatCurrency(deductibleTotal)} met</p>
           </div>
         </CardContent>
@@ -52,16 +71,30 @@ export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopU
           <div className="h-[140px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={oopData} cx="50%" cy="50%" innerRadius={45} outerRadius={55} paddingAngle={5} dataKey="value" startAngle={90} endAngle={450}>
+                <Pie
+                  data={oopData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={55}
+                  paddingAngle={5}
+                  dataKey="value"
+                  startAngle={90}
+                  endAngle={450}
+                >
                   <Cell fill="#10B981" />
                   <Cell fill="#F1F5F9" />
-                  <Label value={`${oopPct}%`} position="center" className="fill-foreground font-bold text-lg" />
+                  <Label
+                    value={`${oopPct}%`}
+                    position="center"
+                    className="fill-foreground font-bold text-lg"
+                  />
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="text-center mt-2">
-            <p className="text-2xl font-bold font-mono">{formatCurrency(oopUsed)}</p>
+          <div className="text-center mt-2 font-mono">
+            <p className="text-2xl font-bold">{formatCurrency(oopUsed)}</p>
             <p className="text-xs text-muted-foreground">of {formatCurrency(oopMax)} limit</p>
           </div>
         </CardContent>
@@ -76,8 +109,8 @@ export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopU
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
             <div className="flex flex-col">
-              <span className="text-xs font-semibold text-blue-600">PRE-SERVICE AUDIT</span>
-              <span className="text-[10px] text-muted-foreground uppercase">Mandatory for costs > $500</span>
+              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">PRE-SERVICE AUDIT</span>
+              <span className="text-[10px] text-muted-foreground uppercase">Mandatory for costs &gt; $500</span>
             </div>
             <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700" onClick={() => setIsVobOpen(true)}>
               <PhoneCall className="mr-2 h-3 w-3" /> Initiate VOB
