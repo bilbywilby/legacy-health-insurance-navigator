@@ -35,7 +35,15 @@ export function AppealGenerator() {
       });
       setHydratedText(text);
     }
-  }, [isOpen, selectedTemplateId, auditId]);
+  }, [
+    isOpen, 
+    selectedTemplateId, 
+    auditId, 
+    forensicData?.cpt, 
+    forensicData?.fmv_variance, 
+    forensicData?.dispute_token, 
+    forensicData?.liability_calc
+  ]);
   const handleCopy = () => {
     navigator.clipboard.writeText(hydratedText);
     toast.success("Appeal letter copied to clipboard");

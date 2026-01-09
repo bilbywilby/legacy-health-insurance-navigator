@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
 import { formatCurrency, calculatePercentage } from '@/lib/utils';
-import { Target, TrendingDown, Zap, PhoneCall, Gift, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Target, TrendingDown, Zap, PhoneCall, Gift, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
@@ -116,7 +116,7 @@ export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopU
           <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">Pre-Service Audit Pipeline</span>
-              <span className="text-[10px] text-muted-foreground uppercase">Mandatory for procedures > $500</span>
+              <span className="text-[10px] text-muted-foreground uppercase">Mandatory for procedures {">"} $500</span>
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" className="h-8 border-blue-500/20 text-blue-600 font-bold text-[10px]" onClick={() => openAppeal()}>

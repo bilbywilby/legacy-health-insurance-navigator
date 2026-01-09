@@ -8,24 +8,25 @@ import { ShopCareEstimator } from '@/components/shop-care-estimator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { ShieldCheck, History, AlertTriangle, Activity, Lock, CheckCircle2, Search } from 'lucide-react';
+import { ShieldCheck, History, AlertTriangle, Activity, Lock, CheckCircle2, Search, FileLock2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { chatService } from '@/lib/chat';
 import { AppealGenerator } from '@/components/appeal-generator';
+import { Button } from '@/components/ui/button';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const isVobOpen = useAppStore(s => s.isVobOpen);
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
-  const insuranceData = useAppStore(s => s.insuranceState);  const documents = useAppStore(s => s.documents);
+  const insuranceData = useAppStore(s => s.insuranceState);
+  const documents = useAppStore(s => s.documents);
   const auditLogs = useAppStore(s => s.auditLogs);
   const lastSync = useAppStore(s => s.lastSync);
   const openAppeal = useAppStore(s => s.openAppealGenerator);
   const doSync = async () => {
     try {
-      // useAppStore.setState({ isLoading: true }); // Store may not have isLoading yet
       const res = await chatService.getMessages();
       if (res.success && res.data) {
         useAppStore.setState({
@@ -44,11 +45,8 @@ export function HomePage() {
       }
     } catch (err) {
       console.error('Failed to sync app data:', err);
-    } finally {
-      // useAppStore.setState({ isLoading: false }); // Store may not have isLoading yet
     }
   };
-
   useEffect(() => {
     doSync();
     const interval = setInterval(doSync, 30000);
@@ -132,7 +130,7 @@ export function HomePage() {
                             <span className="text-[9px] text-muted-foreground font-mono">{new Date(log.timestamp).toLocaleTimeString()}</span>
                           </div>
                           <p className="text-[11px] text-muted-foreground leading-tight line-clamp-2">{log.detail}</p>
-                          <button 
+                          <button
                             onClick={() => openAppeal(log.id)}
                             className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 text-white p-1 rounded hover:bg-blue-700 shadow-sm">
                             <FileLock2 className="h-3 w-3" />
@@ -170,9 +168,9 @@ export function HomePage() {
                           <span>45%</span>
                         </div>
                         <Progress value={45} className="h-1 bg-amber-100 dark:bg-amber-950/20" />
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full h-7 text-[9px] font-bold border-amber-500/20 text-amber-600 hover:bg-amber-50"
                           onClick={() => openAppeal()}>
                           GENERATE STRATEGIC DISPUTE
@@ -202,7 +200,6 @@ export function HomePage() {
                 <span>[VAULT]: SBC DOCUMENT #291 PARSED SUCCESSFULLY</span>
                 <span>[SYSTEM]: PII SCRUB V2.1 DEPLOYED - 0 LEAKS DETECTED</span>
                 <span>[NETWORK]: ST. JUDE MEMORIAL VERIFIED IN-NETWORK TIER 1</span>
-                {/* Duplicate for seamless looping if needed by marquee logic */}
                 <span>[CLAIM #9921-A]: VERIFIED - NO UNBUNDLING DETECTED</span>
                 <span>[CLAIM #9921-B]: NSA FLAG TRIPPED - BALANCE BILLING DETECTED</span>
              </div>
