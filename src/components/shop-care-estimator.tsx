@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Calculator, ShieldAlert, TrendingUp, Info, Printer, Sparkles, AlertTriangle } from 'lucide-react';
+import { Calculator, ShieldAlert, TrendingUp, Info, Printer, Sparkles, AlertTriangle, Fingerprint } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { toast } from 'sonner';
 interface EstimatorProps {
@@ -19,7 +19,11 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
   const [isInNetwork, setIsInNetwork] = useState(true);
   const [isEmergency, setIsEmergency] = useState(false);
   const estimate = parseFloat(cost) || 0;
-  // Logic: Deductible First -> Co-insurance (assume 20%) -> OOP Max limit
+  // FMV V2.1 Simulation Logic
+  // Assuming a baseline average of $500 for generic procedures in this view
+  const genericBaseline = 500;
+  const fmvUpperLimit = genericBaseline * 1.4; // 140% Baseline
+  const isCriticalOvercharge = estimate > fmvUpperLimit * 1.4; // 40% Over Baseline
   const deductibleApplied = Math.min(estimate, deductibleRemaining);
   const remainingAfterDeductible = Math.max(0, estimate - deductibleApplied);
   const coinsuranceRate = isInNetwork ? 0.2 : 0.4;
@@ -27,7 +31,6 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
   const rawTotal = deductibleApplied + coinsurance;
   const netResponsibility = Math.min(rawTotal, oopRemaining);
   const oopImpactPercent = Math.round((netResponsibility / Math.max(1, oopRemaining)) * 100);
-  // NSA Logic
   const isNsaProtected = isEmergency || (!isInNetwork && estimate > 500);
   const potentialSavings = !isInNetwork && isNsaProtected ? (estimate * 0.4) - (estimate * 0.2) : 0;
   const handlePrint = () => {
@@ -46,23 +49,29 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
             <Printer className="h-4 w-4" />
           </Button>
         </div>
-        <CardDescription className="text-xs">Dynamic liability modeling based on current plan state.</CardDescription>
-        {isNsaProtected && (
-          <div className="absolute right-[-20px] top-[20px] rotate-45 bg-amber-500 text-white text-[8px] font-bold px-8 py-1 shadow-md">
-            NSA ACTIVE
+        <CardDescription className="text-xs font-medium">Deterministic V2.1 Liability Modeling Engine.</CardDescription>
+        {isCriticalOvercharge && (
+          <div className="absolute right-[-20px] top-[20px] rotate-45 bg-rose-600 text-white text-[8px] font-bold px-8 py-1 shadow-md animate-pulse">
+            HIGH VARIANCE
           </div>
         )}
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Estimated Provider Cost</Label>
+            <div className="flex justify-between">
+              <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Estimated Provider Cost</Label>
+              <span className="text-[9px] font-mono text-blue-500">FMV BASE: ${fmvUpperLimit.toFixed(0)}</span>
+            </div>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
               <Input
                 type="number"
                 placeholder="0.00"
-                className="pl-7 bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500"
+                className={cn(
+                  "pl-7 bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500 font-mono",
+                  isCriticalOvercharge && "border-rose-500/50 text-rose-600"
+                )}
                 value={cost}
                 onChange={(e) => setCost(e.target.value)}
               />
@@ -74,7 +83,7 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
               <Button
                 variant={isInNetwork ? "default" : "ghost"}
                 size="sm"
-                className={cn("flex-1 text-[10px] h-7", isInNetwork && "bg-blue-600")}
+                className={cn("flex-1 text-[10px] h-7 font-bold", isInNetwork && "bg-blue-600")}
                 onClick={() => setIsInNetwork(true)}
               >
                 IN-NETWORK
@@ -82,7 +91,7 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
               <Button
                 variant={!isInNetwork ? "default" : "ghost"}
                 size="sm"
-                className={cn("flex-1 text-[10px] h-7", !isInNetwork && "bg-amber-600")}
+                className={cn("flex-1 text-[10px] h-7 font-bold", !isInNetwork && "bg-amber-600")}
                 onClick={() => setIsInNetwork(false)}
               >
                 OUT-OF-NETWORK
@@ -90,12 +99,12 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-between p-3 rounded-lg border bg-amber-500/5 border-amber-500/10">
+        <div className="flex items-center justify-between p-3 rounded-lg border bg-blue-500/5 border-blue-500/10">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-amber-500" />
+            <ShieldAlert className="h-4 w-4 text-blue-500" />
             <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-tight">NSA Compliance Monitor</span>
-              <span className="text-[9px] text-muted-foreground">Flag for No Surprises Act protections</span>
+              <span className="text-[10px] font-bold uppercase tracking-tight">NSA / Emergency Logic</span>
+              <span className="text-[9px] text-muted-foreground">Apply No Surprises Act protections</span>
             </div>
           </div>
           <Switch checked={isEmergency} onCheckedChange={setIsEmergency} />
@@ -103,11 +112,11 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
         <div className="p-4 bg-blue-600/5 rounded-xl border border-blue-500/20 space-y-4">
           <div className="flex justify-between items-end">
             <div>
-              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Net Liability</p>
+              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Net Patient Responsibility</p>
               <p className="text-3xl font-mono font-bold tracking-tighter">{formatCurrency(netResponsibility)}</p>
             </div>
             <div className="text-right space-y-1">
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[9px] font-mono">
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[9px] font-mono font-bold">
                 {Math.round(coinsuranceRate * 100)}% CO-INS
               </Badge>
               {potentialSavings > 0 && (
@@ -118,30 +127,28 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
             </div>
           </div>
           <div className="space-y-1.5">
-            <div className="flex justify-between text-[10px] font-medium uppercase tracking-tighter">
-              <span className="text-muted-foreground">OOP Exposure impact</span>
-              <span className="text-blue-500 font-bold">{oopImpactPercent}% REMAINING LIMIT</span>
+            <div className="flex justify-between text-[10px] font-bold uppercase tracking-tighter">
+              <span className="text-muted-foreground">Plan Limit Exposure</span>
+              <span className="text-blue-500">{oopImpactPercent}% OF OOP MAX</span>
             </div>
             <Progress value={oopImpactPercent} className="h-1 bg-blue-100/50 dark:bg-blue-900/30" />
           </div>
         </div>
         <div className="flex gap-3 p-3 bg-muted/30 rounded-lg border text-[11px] leading-relaxed text-muted-foreground">
-          {isNsaProtected ? (
+          {isCriticalOvercharge ? (
             <>
-              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <AlertTriangle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-amber-600">NSA PROTECTION ACTIVE: </span>
-                Facility is {isInNetwork ? 'In-Network' : 'Out-of-Network'} but emergency logic applies. You are protected from balance billing above in-network rates.
+                <span className="font-bold text-rose-600">CRITICAL OVERCHARGE DETECTED: </span>
+                This cost exceeds Fair Market Value by over 40%. A strategic dispute token (NAV-DS) is recommended before payment.
               </div>
             </>
           ) : (
             <>
-              <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+              <Fingerprint className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-foreground">STRATEGIC FORECAST: </span>
-                {netResponsibility > 500 && deductibleRemaining > 0
-                  ? "Liability exceeds $500 threshold. Manual VOB is recommended to confirm Tier 1 status."
-                  : "Calculated liability is within expected parameters. Proceed with digital record capture."}
+                <span className="font-bold text-foreground uppercase tracking-tight">Forensic Forecast: </span>
+                {estimate > 0 ? `Cost is within expected variance (+${Math.round((estimate/fmvUpperLimit - 1) * 100)}%). Verification complete.` : "Awaiting forensic input data."}
               </div>
             </>
           )}

@@ -1,9 +1,19 @@
 import { Agent } from 'agents';
 import type { Env } from './core-utils';
-import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry } from './types';
+import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry, Cpt, BilledAmount } from './types';
 import { ChatHandler } from './chat';
-import { API_RESPONSES } from './config';
+import { API_RESPONSES, CRITICAL_OVERCHARGE_THRESHOLD } from './config';
 import { createMessage } from './utils';
+import { ForensicEngine } from './forensic';
+// Static CPT Benchmarks based on 2024 Medicare/National Averages
+const CPT_BENCHMARKS: Record<string, number> = {
+  '99213': 92.00,   // Mid-level office visit
+  '99214': 128.00,  // Higher-level office visit
+  '72141': 450.00,  // MRI Lumbar Spine w/o contrast
+  '80053': 14.50,   // Comprehensive metabolic panel
+  '45378': 750.00,  // Colonoscopy
+  '90686': 19.00    // Flu vaccine
+};
 export class ChatAgent extends Agent<Env, ChatState> {
   private chatHandler?: ChatHandler;
   initialState: ChatState = {
@@ -100,32 +110,39 @@ export class ChatAgent extends Agent<Env, ChatState> {
   private async handleChatMessage(body: { message: string; model?: string; stream?: boolean }): Promise<Response> {
     const { message, model } = body;
     if (!message?.trim()) return Response.json({ success: false, error: API_RESPONSES.MISSING_MESSAGE }, { status: 400 });
+    // Scrub PII immediately
+    const cleanInput = this.scrubPII(message.trim());
     if (model && model !== this.state.model) {
       this.setState({ ...this.state, model });
       this.chatHandler?.updateModel(model);
     }
-    const userMessage = createMessage('user', message.trim());
+    // Detect CPT and Amount for FMV Check
+    const cptMatch = cleanInput.match(/\b\d{5}\b/);
+    const amountMatch = cleanInput.match(/\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+    if (cptMatch && amountMatch) {
+      const cpt: Cpt = cptMatch[0];
+      const billed: BilledAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
+      const fmvResult = ForensicEngine.calculateFMV(cpt, billed, CPT_BENCHMARKS);
+      if (fmvResult.variance >= CRITICAL_OVERCHARGE_THRESHOLD) {
+        await this.logAuditEvent(
+          "Critical FMV Flag", 
+          `CPT ${cpt} at ${billed} shows ${fmvResult.variance}% variance from FMV baseline of ${fmvResult.baseline}.`, 
+          "critical"
+        );
+      }
+    }
+    const userMessage = createMessage('user', cleanInput);
     this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
     try {
       if (!this.chatHandler) {
         this.chatHandler = new ChatHandler(this.env.CF_AI_BASE_URL, this.env.CF_AI_API_KEY, this.state.model);
       }
       const response = await this.chatHandler.processMessage(
-        message,
+        cleanInput,
         this.state.messages,
         this.state.documents,
         this.state.insuranceState
       );
-      if (this.state.insuranceState && response.content.includes('$')) {
-        const costMatch = response.content.match(/\$\d{1,3}(,\d{3})*(\.\d{2})?/);
-        if (costMatch) {
-          const rawVal = parseFloat(costMatch[0].replace(/[$,]/g, ''));
-          const remainingLimit = this.state.insuranceState.oopMax - this.state.insuranceState.oopUsed;
-          if (rawVal > remainingLimit) {
-            await this.logAuditEvent("Liability Flag", `Calculated liability ($${rawVal}) exceeds remaining OOP Max ($${remainingLimit}). High-priority review required.`, "critical");
-          }
-        }
-      }
       const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
       this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
       return Response.json({ success: true, data: this.state });

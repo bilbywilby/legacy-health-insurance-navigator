@@ -11,6 +11,8 @@ export interface MCPResult {
 export interface ErrorResult {
   error: string;
 }
+export type Cpt = string;
+export type BilledAmount = number;
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -53,6 +55,9 @@ export interface ForensicOutput {
   confidence_score: number;
   code_validation: boolean;
   strategic_disclaimer: string;
+  fmv_variance?: number;
+  dispute_token?: string | null;
+  is_overcharge?: boolean;
 }
 export interface ChatState {
   messages: Message[];
