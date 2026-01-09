@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DashboardMetrics } from '@/components/dashboard-metrics';
 import { ChatInterface } from '@/components/chat-interface';
@@ -9,43 +9,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { ShieldCheck, History, AlertTriangle, Activity, Lock, CheckCircle2, Search } from 'lucide-react';
-import { chatService } from '@/lib/chat';
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { InsuranceDocument, InsuranceState, AuditEntry } from '../../worker/types';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const isVobOpen = useAppStore(s => s.isVobOpen);
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
-  const [insuranceData, setInsuranceData] = useState<InsuranceState>({
-    deductibleTotal: 3000,
-    deductibleUsed: 1350,
-    oopMax: 6500,
-    oopUsed: 2100,
-  });
-  const [documents, setDocuments] = useState<InsuranceDocument[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
-  const [lastSync, setLastSync] = useState<number>(Date.now());
-  const fetchState = async () => {
-    try {
-      const res = await chatService.getMessages();
-      if (res.success && res.data) {
-        if (res.data.insuranceState) setInsuranceData(res.data.insuranceState);
-        if (res.data.documents) setDocuments(res.data.documents);
-        if (res.data.auditLogs) setAuditLogs(res.data.auditLogs);
-        if (res.data.lastContextSync) setLastSync(res.data.lastContextSync);
-      }
-    } catch (err) {
-      console.error("Failed to fetch state:", err);
-    }
-  };
+  const insuranceData = useAppStore(s => s.insuranceState);
+  const documents = useAppStore(s => s.documents);
+  const auditLogs = useAppStore(s => s.auditLogs);
+  const lastSync = useAppStore(s => s.lastSync);
+  const syncData = useAppStore(s => s.syncData);
   useEffect(() => {
-    fetchState();
-    const interval = setInterval(fetchState, 30000);
+    syncData();
+    const interval = setInterval(syncData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [syncData]);
   return (
     <AppLayout container>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-10 lg:py-12 space-y-8 animate-fade-in">
@@ -168,20 +149,23 @@ export function HomePage() {
             <ChatInterface activeDocuments={documents} />
           </TabsContent>
           <TabsContent value="vault" className="mt-0 focus-visible:outline-none">
-            <DocumentVault documents={documents} onRefresh={fetchState} insuranceState={insuranceData} />
+            <DocumentVault documents={documents} onRefresh={syncData} insuranceState={insuranceData} />
           </TabsContent>
         </Tabs>
         <div className="relative h-10 w-full bg-muted/20 border rounded-full overflow-hidden flex items-center px-4 gap-4">
            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-blue-600 shrink-0">
              <Activity className="h-3 w-3" /> LIVE AUDIT TICKER:
            </div>
-           <div className="flex-1 overflow-hidden">
-             <div className="flex gap-12 animate-marquee whitespace-nowrap text-[10px] font-mono text-muted-foreground uppercase">
+           <div className="flex-1 overflow-hidden relative h-full flex items-center">
+             <div className="flex gap-12 animate-marquee whitespace-nowrap text-[10px] font-mono text-muted-foreground uppercase absolute">
                 <span>[CLAIM #9921-A]: VERIFIED - NO UNBUNDLING DETECTED</span>
                 <span>[CLAIM #9921-B]: NSA FLAG TRIPPED - BALANCE BILLING DETECTED</span>
                 <span>[VAULT]: SBC DOCUMENT #291 PARSED SUCCESSFULLY</span>
                 <span>[SYSTEM]: PII SCRUB V2.1 DEPLOYED - 0 LEAKS DETECTED</span>
                 <span>[NETWORK]: ST. JUDE MEMORIAL VERIFIED IN-NETWORK TIER 1</span>
+                {/* Duplicate for seamless looping if needed by marquee logic */}
+                <span>[CLAIM #9921-A]: VERIFIED - NO UNBUNDLING DETECTED</span>
+                <span>[CLAIM #9921-B]: NSA FLAG TRIPPED - BALANCE BILLING DETECTED</span>
              </div>
            </div>
            <div className="flex items-center gap-2 shrink-0">

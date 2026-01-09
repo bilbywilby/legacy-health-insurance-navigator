@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { chatService } from '@/lib/chat';
 import { ForensicInsight } from './forensic-insight';
+import { useAppStore } from '@/lib/store';
 import type { Message, InsuranceDocument, ForensicOutput } from '../../worker/types';
 interface ChatInterfaceProps {
   activeDocuments?: InsuranceDocument[];
@@ -18,12 +19,16 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
   const [loading, setLoading] = useState(false);
   const [showForensics, setShowForensics] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const syncData = useAppStore(s => s.syncData);
   useEffect(() => {
     loadMessages();
   }, []);
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      const timeoutId = setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [messages, loading]);
   const loadMessages = async () => {
@@ -41,6 +46,8 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
       const res = await chatService.sendMessage(userMsg);
       if (res.success && res.data) {
         setMessages(res.data.messages);
+        // Sync global state in case the AI modified plan status (simulated behavior)
+        syncData();
       }
     } catch (err) {
       console.error(err);
@@ -53,7 +60,9 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
     let forensicData: ForensicOutput | null = null;
     if (forensicMatch) {
       try {
-        const cleanedJson = forensicMatch[1].trim();
+        let cleanedJson = forensicMatch[1].trim();
+        // Remove markdown code fences if present
+        cleanedJson = cleanedJson.replace(/^```json\s*/, '').replace(/```$/, '').trim();
         forensicData = JSON.parse(cleanedJson);
       } catch (e) {
         console.warn("Forensic parsing failed, attempting fuzzy recovery.");
@@ -79,8 +88,8 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
       if (i % 2 === 1) {
         const isMultiline = part.includes('\n');
         return (
-          <code 
-            key={i} 
+          <code
+            key={i}
             className={cn(
               "bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-900/50",
               isMultiline && "block p-4 my-2 overflow-x-auto whitespace-pre"
@@ -144,21 +153,21 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
               const { mainBody, strategicStep, forensicData } = parseMessageContent(m.content);
               const isNsa = m.content.toLowerCase().includes('no surprises act') || m.content.toLowerCase().includes('nsa');
               return (
-                <motion.div 
-                  key={m.id} 
-                  initial={{ opacity: 0, y: 10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   className={cn("flex gap-4", m.role === 'user' ? "flex-row-reverse" : "flex-row")}
                 >
                   <div className={cn(
-                    "h-8 w-8 rounded-full flex items-center justify-center shrink-0 border shadow-sm", 
+                    "h-8 w-8 rounded-full flex items-center justify-center shrink-0 border shadow-sm",
                     m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white border-blue-700"
                   )}>
                     {m.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                   </div>
                   <div className={cn("flex flex-col gap-2 max-w-[85%]", m.role === 'user' ? "items-end" : "items-start")}>
                     <div className={cn(
-                      "p-4 rounded-2xl text-sm shadow-soft border", 
+                      "p-4 rounded-2xl text-sm shadow-soft border",
                       m.role === 'user' ? "bg-muted rounded-tr-none" : "bg-card rounded-tl-none border-l-4 border-l-blue-500"
                     )}>
                       <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans leading-relaxed text-foreground/90">
@@ -195,7 +204,7 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
               </div>
             </div>
           )}
-          <div ref={scrollRef} />
+          <div ref={scrollRef} className="h-1" />
         </div>
       </ScrollArea>
       <div className="p-4 border-t bg-background">

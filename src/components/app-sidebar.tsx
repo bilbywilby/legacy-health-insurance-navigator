@@ -13,29 +13,14 @@ import {
   SidebarGroupLabel,
 } from "@/components/ui/sidebar";
 import { Progress } from "@/components/ui/progress";
-import { chatService } from "@/lib/chat";
 import { useAppStore } from "@/lib/store";
 export function AppSidebar(): JSX.Element {
-  const [deductibleData, setDeductibleData] = React.useState({ used: 1350, total: 3000 });
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
-  React.useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await chatService.getMessages();
-        if (res.success && res.data?.insuranceState) {
-          setDeductibleData({
-            used: res.data.insuranceState.deductibleUsed,
-            total: res.data.insuranceState.deductibleTotal
-          });
-        }
-      } catch (err) {
-        console.error("Sidebar load error", err);
-      }
-    };
-    load();
-  }, []);
-  const percentage = Math.round((deductibleData.used / deductibleData.total) * 100);
+  const insuranceState = useAppStore(s => s.insuranceState);
+  const percentage = Math.round(
+    (insuranceState.deductibleUsed / (insuranceState.deductibleTotal || 1)) * 100
+  );
   return (
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader>
@@ -90,7 +75,7 @@ export function AppSidebar(): JSX.Element {
           </div>
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>${deductibleData.used.toLocaleString()} used</span>
+              <span>${insuranceState.deductibleUsed.toLocaleString()} used</span>
               <span>{percentage}%</span>
             </div>
             <Progress value={percentage} className="h-1 bg-blue-100 dark:bg-blue-900" />

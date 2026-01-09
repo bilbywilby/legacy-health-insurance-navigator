@@ -1,4 +1,4 @@
-import type { Message, ChatState, ToolCall, SessionInfo, InsuranceDocument, InsuranceState, AuditEntry, ForensicOutput, Cpt } from '../../worker/types';
+import type { Message, ChatState, SessionInfo, InsuranceDocument, InsuranceState, AuditEntry, ForensicOutput, Cpt } from '../../worker/types';
 export interface ChatResponse {
   success: boolean;
   data?: ChatState & { forensicData?: ForensicOutput };
@@ -9,16 +9,16 @@ export const MODELS = [
   { id: 'google-ai-studio/gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
   { id: 'google-ai-studio/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash' },
 ];
+const SESSION_KEY = 'legacy_session_id';
 class ChatService {
   private sessionId: string;
   private baseUrl: string;
   constructor() {
-    this.sessionId = crypto.randomUUID();
+    const saved = localStorage.getItem(SESSION_KEY);
+    this.sessionId = saved || crypto.randomUUID();
+    if (!saved) localStorage.setItem(SESSION_KEY, this.sessionId);
     this.baseUrl = `/api/chat/${this.sessionId}`;
   }
-  /**
-   * Normalizes CPT codes for cleaner context matching.
-   */
   normalizeCpt(cpt: string): Cpt {
     return cpt.replace(/[^0-9]/g, '').trim();
   }
@@ -60,14 +60,15 @@ class ChatService {
       if (data.success && data.data?.messages) {
         const lastMsg = data.data.messages[data.data.messages.length - 1];
         if (lastMsg && lastMsg.role === 'assistant') {
-          // Robust parsing for V2.1 Forensic JSON blocks
           const match = lastMsg.content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/m);
           if (match) {
             try {
-              const parsed = JSON.parse(match[1]);
+              let cleanedJson = match[1].trim();
+              // Strip potential markdown code fences inside the tag
+              cleanedJson = cleanedJson.replace(/^```json\s*/, '').replace(/```$/, '').trim();
+              const parsed = JSON.parse(cleanedJson);
               data.data.forensicData = {
                 ...parsed,
-                // Ensure defaults for V2.1 fields
                 fmv_variance: parsed.fmv_variance ?? 0,
                 dispute_token: parsed.dispute_token ?? null,
                 is_overcharge: parsed.is_overcharge ?? (parsed.fmv_variance > 10)
@@ -124,10 +125,12 @@ class ChatService {
   getSessionId(): string { return this.sessionId; }
   newSession(): void {
     this.sessionId = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, this.sessionId);
     this.baseUrl = `/api/chat/${this.sessionId}`;
   }
   switchSession(sessionId: string): void {
     this.sessionId = sessionId;
+    localStorage.setItem(SESSION_KEY, this.sessionId);
     this.baseUrl = `/api/chat/${sessionId}`;
   }
 }
