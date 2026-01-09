@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall, InsuranceDocument } from './types';
+import type { Message, ToolCall, InsuranceDocument, InsuranceState } from './types';
 import { getToolDefinitions, executeTool } from './tools';
 import { ChatCompletionMessageFunctionToolCall } from 'openai/resources/index.mjs';
 export class ChatHandler {
@@ -16,12 +16,13 @@ export class ChatHandler {
     message: string,
     conversationHistory: Message[],
     documents: InsuranceDocument[] = [],
+    insuranceState?: InsuranceState,
     onChunk?: (chunk: string) => void
   ): Promise<{
     content: string;
     toolCalls?: ToolCall[];
   }> {
-    const messages = this.buildConversationMessages(message, conversationHistory, documents);
+    const messages = this.buildConversationMessages(message, conversationHistory, documents, insuranceState);
     const toolDefinitions = await getToolDefinitions();
     if (onChunk) {
       const stream = await this.client.chat.completions.create({
@@ -32,7 +33,7 @@ export class ChatHandler {
         max_completion_tokens: 16000,
         stream: true,
       });
-      return this.handleStreamResponse(stream, message, conversationHistory, documents, onChunk);
+      return this.handleStreamResponse(stream, message, conversationHistory, documents, insuranceState, onChunk);
     }
     const completion = await this.client.chat.completions.create({
       model: this.model,
@@ -42,13 +43,14 @@ export class ChatHandler {
       max_tokens: 16000,
       stream: false
     });
-    return this.handleNonStreamResponse(completion, message, conversationHistory, documents);
+    return this.handleNonStreamResponse(completion, message, conversationHistory, documents, insuranceState);
   }
   private async handleStreamResponse(
     stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
     message: string,
     conversationHistory: Message[],
     documents: InsuranceDocument[],
+    insuranceState: InsuranceState | undefined,
     onChunk: (chunk: string) => void
   ) {
     let fullContent = '';
@@ -89,7 +91,7 @@ export class ChatHandler {
     }
     if (accumulatedToolCalls.length > 0) {
       const executedTools = await this.executeToolCalls(accumulatedToolCalls);
-      const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, accumulatedToolCalls, executedTools);
+      const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, insuranceState, accumulatedToolCalls, executedTools);
       return { content: finalResponse, toolCalls: executedTools };
     }
     return { content: fullContent };
@@ -98,17 +100,14 @@ export class ChatHandler {
     completion: OpenAI.Chat.Completions.ChatCompletion,
     message: string,
     conversationHistory: Message[],
-    documents: InsuranceDocument[]
+    documents: InsuranceDocument[],
+    insuranceState: InsuranceState | undefined
   ) {
     const responseMessage = completion.choices[0]?.message;
-    if (!responseMessage) {
-      return { content: 'I apologize, but I encountered an issue processing your request.' };
-    }
-    if (!responseMessage.tool_calls) {
-      return { content: responseMessage.content || 'I apologize, but I encountered an issue.' };
-    }
+    if (!responseMessage) return { content: 'I apologize, but I encountered an issue.' };
+    if (!responseMessage.tool_calls) return { content: responseMessage.content || 'I apologize, but I encountered an issue.' };
     const toolCalls = await this.executeToolCalls(responseMessage.tool_calls as ChatCompletionMessageFunctionToolCall[]);
-    const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, responseMessage.tool_calls, toolCalls);
+    const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, insuranceState, responseMessage.tool_calls, toolCalls);
     return { content: finalResponse, toolCalls };
   }
   private async executeToolCalls(openAiToolCalls: ChatCompletionMessageFunctionToolCall[]): Promise<ToolCall[]> {
@@ -128,6 +127,7 @@ export class ChatHandler {
     userMessage: string,
     history: Message[],
     documents: InsuranceDocument[],
+    insuranceState: InsuranceState | undefined,
     openAiToolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[],
     toolResults: ToolCall[]
   ): Promise<string> {
@@ -148,35 +148,42 @@ export class ChatHandler {
     });
     return followUpCompletion.choices[0]?.message?.content || 'Strategic step compiled.';
   }
-  private buildConversationMessages(userMessage: string, history: Message[], documents: InsuranceDocument[]) {
-    const docContext = documents.length > 0 
+  private buildConversationMessages(userMessage: string, history: Message[], documents: InsuranceDocument[], insuranceState?: InsuranceState) {
+    const docContext = documents.length > 0
       ? `## REFERENCE CONTEXT (Data Primacy Documents)\n${documents.map(d => `[DOCUMENT: ${d.title} (${d.type})]\n${d.content}\n---`).join('\n')}`
-      : 'No specific policy documents have been uploaded yet. Encourage the user to provide EOC/SBC for precise forensics.';
+      : 'No specific policy documents have been uploaded yet. Encourage EOC/SBC upload.';
+    const stateContext = insuranceState 
+      ? `## YTD FINANCIAL STATUS\n- Deductible: ${insuranceState.deductibleUsed}/${insuranceState.deductibleTotal}\n- OOP Max: ${insuranceState.oopUsed}/${insuranceState.oopMax}`
+      : 'YTD tracking not initialized.';
     const systemPrompt = `
-      # MASTER PERSONA: Senior Health Insurance Auditor and Medical Billing Advocate
-      You are an elite AI agent specialized in Forensic Analysis of Summary of Benefits (SBC), Evidence of Coverage (EOC), and Explanation of Benefits (EOB). Your mission is to protect the patient's finances.
+      # MASTER PERSONA: Senior Health Insurance Auditor (Legacy Navigator)
+      You are an elite AI agent specialized in Forensic Analysis of medical billing and insurance contracts.
       ## CORE OPERATING PRINCIPLES
-      - **Data Primacy**: Prioritize uploaded policy documents over general knowledge. If a conflict exists, quote the specific page/section from the user's PDF/Document.
-      - **Financial Precision**: Calculate patient responsibility using mathematical logic. Provide the "why" behind every number.
-      - **Non-Evaluative Stance**: Provide mathematical and contractual facts. Do not label plans as "good" or "bad." 
-      ## OPERATIONAL MODULES
-      - **Audit Mode**: When an EOB or bill is provided, cross-reference CPT/HCPCS codes against the plan’s coverage for that "Place of Service". Check for "Balance Billing" or "Unbundling".
-      - **Appeal Generation**: If a claim is denied, identify the specific "Denial Code." Draft a formal appeal letter citing "Medical Necessity" definitions found in the uploaded EOC.
-      - **Alternative Care Analysis**: For drugs/procedures, search documents for "Step Therapy" or "Prior Authorization" protocols.
-      ## INTERACTION STYLE
-      - **Format**: Use JetBrains Mono for financial figures, CPT codes, and specific calculations.
-      - **Actionable Outputs**: Every response must include a "Next Strategic Step" (e.g., call script or appeal bullet points).
-      - **Tone**: Medical Grade Fintech - precise, authoritative, calm.
+      - **Data Primacy**: Always prioritize uploaded policy documents (EOC/SBC) over general knowledge.
+      - **Financial Precision**: Calculate responsibility using JetBrains Mono formatting for codes and figures.
+      - **State-Awareness**: Use the YTD Status to suggest accelerating or deferring care.
+      ${stateContext}
       ${docContext}
-      ## LIMITATIONS
-      - You do not provide legal or clinical medical advice. You are a financial advocate.
+      ## STRATEGIC DIRECTIVES (LEGACY MODE)
+      1. **Code Alignment**: Provide CPT/HCPCS codes for any procedure. Explain how "Coding Intensity" affects bills.
+      2. **Pre-Service Protocol**: For care >$500, suggest a "Verification of Benefits" checklist.
+      3. **Financial Arbitrage**: Advise on HSA/FSA spend-down vs. deductible reset dates in Q4.
+      4. **Dispute Escalation**: Provide instructions for Independent Medical Reviews (IMR) if appeals fail.
+      ## MODULE: PROACTIVE CARE & COST NAVIGATOR
+      - **Appointment Validation**: Identify Network Status (Tier 1 vs Tier 2). Ask for NPI/Tax ID.
+      - **Long-Term Impact**: Calculate how a cost hits the OOP Max. Explain "Incentive to Bundle" if near limits.
+      - **Plan Maximization (ROI)**: Hunt for "Value-Added" benefits like $0 Wellness Exams, screenings, or gym reimbursements.
+      ## REGULATORY FRAMEWORK
+      - **No Surprises Act**: Flag balance billing in emergency settings.
+      - **ERISA**: Apply federal standards for employer-sponsored plans.
+      ## INTERACTION STYLE
+      - Format technical data in JetBrains Mono.
+      - End every response with a "Next Strategic Step".
+      - Disclaimer: "Legacy Navigator provides financial advocacy, not legal or clinical advice."
     `.trim();
     return [
       { role: 'system' as const, content: systemPrompt },
-      ...history.slice(-10).map(m => ({
-        role: m.role,
-        content: m.content
-      })),
+      ...history.slice(-10).map(m => ({ role: m.role, content: m.content })),
       { role: 'user' as const, content: userMessage }
     ];
   }

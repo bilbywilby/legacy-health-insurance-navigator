@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Loader2, Info, FileSearch, ShieldCheck, SearchCode } from 'lucide-react';
+import { Send, Bot, User, Loader2, FileSearch, ShieldCheck, SearchCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -50,8 +50,8 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
     }
   };
   return (
-    <div className="flex flex-col h-[700px]">
-      <div className="p-4 border-b flex items-center justify-between bg-muted/30">
+    <div className="flex flex-col h-[700px] bg-background">
+      <div className="p-4 border-b flex items-center justify-between bg-muted/20">
         <div className="flex items-center gap-2">
           <FileSearch className="h-5 w-5 text-blue-500" />
           <span className="font-semibold text-sm">Forensic Audit Console</span>
@@ -77,43 +77,26 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
               <div className="space-y-2">
                 <p className="text-lg font-medium">Senior Insurance Auditor Initialized</p>
                 <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                  Provide an EOC, medical bill, or EOB for forensic analysis. Data Primacy is currently enabled.
+                  Provide an EOC, medical bill, or EOB for forensic analysis. Data Primacy is active.
                 </p>
               </div>
             </div>
           )}
           <AnimatePresence initial={false}>
             {messages.map((m) => (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={cn(
-                  "flex gap-4",
-                  m.role === 'user' ? "flex-row-reverse" : "flex-row"
-                )}
-              >
-                <div className={cn(
-                  "h-8 w-8 rounded-full flex items-center justify-center shrink-0 border",
-                  m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white shadow-glow"
-                )}>
+              <motion.div key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("flex gap-4", m.role === 'user' ? "flex-row-reverse" : "flex-row")}>
+                <div className={cn("h-8 w-8 rounded-full flex items-center justify-center shrink-0 border", m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white")}>
                   {m.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
-                <div className={cn(
-                  "p-4 rounded-2xl max-w-[85%] text-sm shadow-sm",
-                  m.role === 'user'
-                    ? "bg-muted rounded-tr-none"
-                    : "bg-background border rounded-tl-none border-l-4 border-l-blue-500"
-                )}>
+                <div className={cn("p-4 rounded-2xl max-w-[85%] text-sm shadow-sm", m.role === 'user' ? "bg-muted rounded-tr-none" : "bg-card border rounded-tl-none border-l-4 border-l-blue-500")}>
                   <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans leading-relaxed">
-                    {m.content}
+                    {m.content.split('`').map((part, i) => i % 2 === 1 ? <code key={i} className="bg-muted px-1 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold">{part}</code> : part)}
                   </div>
                   {m.toolCalls && m.toolCalls.length > 0 && (
                     <div className="mt-4 pt-4 border-t flex flex-col gap-2">
                       {m.toolCalls.map((tc, i) => (
                         <div key={i} className="flex items-center gap-2 text-[10px] text-blue-500 font-mono font-bold uppercase tracking-wider">
-                          <SearchCode className="h-3 w-3" />
-                          <span>Forensic_Module: {tc.name}</span>
+                          <SearchCode className="h-3 w-3" /> Forensic_Module: {tc.name}
                         </div>
                       ))}
                     </div>
@@ -123,10 +106,8 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
             ))}
             {streamingContent && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
-                <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-blue-600 text-white">
-                  <Bot className="h-4 w-4" />
-                </div>
-                <div className="p-4 rounded-2xl bg-background border rounded-tl-none border-l-4 border-l-blue-500 max-w-[85%] text-sm shadow-sm">
+                <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-blue-600 text-white"><Bot className="h-4 w-4" /></div>
+                <div className="p-4 rounded-2xl bg-card border rounded-tl-none border-l-4 border-l-blue-500 max-w-[85%] text-sm shadow-sm">
                   <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap leading-relaxed">
                     {streamingContent}
                   </div>
@@ -134,46 +115,16 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
               </motion.div>
             )}
           </AnimatePresence>
-          {loading && !streamingContent && (
-            <div className="flex gap-4">
-              <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-blue-600 text-white animate-pulse">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="p-4 bg-muted/50 rounded-2xl animate-pulse flex items-center gap-3">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Auditing Documents...</span>
-              </div>
-            </div>
-          )}
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
       <div className="p-4 border-t bg-background">
         <div className="max-w-3xl mx-auto flex gap-3 relative">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="Auditor query (e.g. 'Audit this bill against my EOC')..."
-            className="min-h-[100px] resize-none pr-12 focus-visible:ring-blue-500 bg-muted/20 text-sm"
-          />
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            size="icon"
-            className="absolute right-2 bottom-2 rounded-full h-8 w-8 bg-blue-600 hover:bg-blue-700 shadow-glow"
-          >
+          <Textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="Auditor query (e.g. 'Identify CPT codes for a lumbar MRI')..." className="min-h-[100px] resize-none pr-12 focus-visible:ring-blue-500 bg-muted/20 text-sm" />
+          <Button onClick={handleSend} disabled={!input.trim() || loading} size="icon" className="absolute right-2 bottom-2 rounded-full h-8 w-8 bg-blue-600 hover:bg-blue-700 shadow-glow">
             <Send className="h-4 w-4" />
           </Button>
         </div>
-        <p className="text-[10px] text-center text-muted-foreground mt-2 uppercase tracking-tight">
-          Legacy Auditor preserves context via Durable Object state.
-        </p>
       </div>
     </div>
   );

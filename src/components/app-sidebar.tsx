@@ -11,29 +11,31 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarGroupLabel,
-  SidebarMenuAction,
 } from "@/components/ui/sidebar";
 import { Progress } from "@/components/ui/progress";
 import { chatService } from "@/lib/chat";
-
+import { useAppStore } from "@/lib/store";
 export function AppSidebar(): JSX.Element {
   const [deductibleData, setDeductibleData] = React.useState({ used: 1350, total: 3000 });
-
+  const activeTab = useAppStore(s => s.activeTab);
+  const setActiveTab = useAppStore(s => s.setActiveTab);
   React.useEffect(() => {
     const load = async () => {
-      const res = await chatService.getMessages();
-      if (res.success && res.data?.insuranceState) {
-        setDeductibleData({
-          used: res.data.insuranceState.deductibleUsed,
-          total: res.data.insuranceState.deductibleTotal
-        });
+      try {
+        const res = await chatService.getMessages();
+        if (res.success && res.data?.insuranceState) {
+          setDeductibleData({
+            used: res.data.insuranceState.deductibleUsed,
+            total: res.data.insuranceState.deductibleTotal
+          });
+        }
+      } catch (err) {
+        console.error("Sidebar load error", err);
       }
     };
     load();
   }, []);
-
   const percentage = Math.round((deductibleData.used / deductibleData.total) * 100);
-
   return (
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader>
@@ -52,17 +54,17 @@ export function AppSidebar(): JSX.Element {
           <SidebarGroupLabel>Core Ops</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Dashboard" isActive>
+              <SidebarMenuButton tooltip="Dashboard" isActive={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')}>
                 <LayoutDashboard className="h-4 w-4" /> <span>Dashboard</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Forensic Chat">
+              <SidebarMenuButton tooltip="Forensic Chat" isActive={activeTab === 'chat'} onClick={() => setActiveTab('chat')}>
                 <MessageSquareText className="h-4 w-4" /> <span>Forensic Chat</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Document Vault">
+              <SidebarMenuButton tooltip="Document Vault" isActive={activeTab === 'vault'} onClick={() => setActiveTab('vault')}>
                 <FileLock2 className="h-4 w-4" /> <span>Document Vault</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
