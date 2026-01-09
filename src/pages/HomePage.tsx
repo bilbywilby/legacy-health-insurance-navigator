@@ -12,6 +12,7 @@ import { ShieldCheck, History, AlertTriangle, Activity, Lock, CheckCircle2, Sear
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { chatService } from '@/lib/chat';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
@@ -21,12 +22,38 @@ export function HomePage() {
   const documents = useAppStore(s => s.documents);
   const auditLogs = useAppStore(s => s.auditLogs);
   const lastSync = useAppStore(s => s.lastSync);
-  const syncData = useAppStore(s => s.syncData);
+
+  const doSync = async () => {
+    try {
+      // useAppStore.setState({ isLoading: true }); // Store may not have isLoading yet
+      const res = await chatService.getMessages();
+      if (res.success && res.data) {
+        useAppStore.setState({
+          insuranceState: res.data.insuranceState || {
+            deductibleTotal: 3000,
+            deductibleUsed: 1350,
+            oopMax: 6500,
+            oopUsed: 2100,
+            planType: 'PPO',
+            networkStatus: 'In-Network'
+          },
+          documents: res.data.documents || [],
+          auditLogs: res.data.auditLogs || [],
+          lastSync: res.data.lastContextSync || Date.now(),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync app data:', err);
+    } finally {
+      // useAppStore.setState({ isLoading: false }); // Store may not have isLoading yet
+    }
+  };
+
   useEffect(() => {
-    syncData();
-    const interval = setInterval(syncData, 30000);
+    doSync();
+    const interval = setInterval(doSync, 30000);
     return () => clearInterval(interval);
-  }, [syncData]);
+  }, []);
   return (
     <AppLayout container>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-10 lg:py-12 space-y-8 animate-fade-in">
@@ -52,7 +79,7 @@ export function HomePage() {
                  <span className="text-[10px] font-bold uppercase tracking-widest">NSA MONITOR ACTIVE</span>
                </div>
                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-tighter">
-                 LAST SYNC: {new Date(lastSync).toLocaleTimeString()}
+                 LAST SYNC: {lastSync ? new Date(lastSync).toLocaleTimeString() : 'Never'}
                </p>
              </div>
              <div className="h-10 w-10 rounded-full border-2 border-emerald-500/20 flex items-center justify-center bg-emerald-500/5">
@@ -149,7 +176,7 @@ export function HomePage() {
             <ChatInterface activeDocuments={documents} />
           </TabsContent>
           <TabsContent value="vault" className="mt-0 focus-visible:outline-none">
-            <DocumentVault documents={documents} onRefresh={syncData} insuranceState={insuranceData} />
+            <DocumentVault documents={documents} onRefresh={doSync} insuranceState={insuranceData} />
           </TabsContent>
         </Tabs>
         <div className="relative h-10 w-full bg-muted/20 border rounded-full overflow-hidden flex items-center px-4 gap-4">

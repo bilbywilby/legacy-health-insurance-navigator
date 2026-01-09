@@ -10,13 +10,11 @@ interface AppState {
   documents: InsuranceDocument[];
   auditLogs: AuditEntry[];
   lastSync: number;
-  isLoading: boolean;
   // Actions
   setActiveTab: (tab: string) => void;
   setIsVobOpen: (open: boolean) => void;
   setInsuranceState: (state: InsuranceState) => void;
   setDocuments: (docs: InsuranceDocument[]) => void;
-  syncData: () => Promise<void>;
 }
 export const useAppStore = create<AppState>((set) => ({
   activeTab: 'dashboard',
@@ -32,34 +30,8 @@ export const useAppStore = create<AppState>((set) => ({
   documents: [],
   auditLogs: [],
   lastSync: Date.now(),
-  isLoading: false,
   setActiveTab: (tab) => set({ activeTab: tab }),
   setIsVobOpen: (open) => set({ isVobOpen: open }),
   setInsuranceState: (insuranceState) => set({ insuranceState }),
   setDocuments: (documents) => set({ documents }),
-  syncData: async () => {
-    set({ isLoading: true });
-    try {
-      const res = await chatService.getMessages();
-      if (res.success && res.data) {
-        set({
-          insuranceState: res.data.insuranceState || {
-            deductibleTotal: 3000,
-            deductibleUsed: 1350,
-            oopMax: 6500,
-            oopUsed: 2100,
-            planType: 'PPO',
-            networkStatus: 'In-Network'
-          },
-          documents: res.data.documents || [],
-          auditLogs: res.data.auditLogs || [],
-          lastSync: res.data.lastContextSync || Date.now(),
-        });
-      }
-    } catch (err) {
-      console.error("Failed to sync app data:", err);
-    } finally {
-      set({ isLoading: false });
-    }
-  }
 }));

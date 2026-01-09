@@ -19,7 +19,6 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
   const [loading, setLoading] = useState(false);
   const [showForensics, setShowForensics] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const syncData = useAppStore(s => s.syncData);
   useEffect(() => {
     loadMessages();
   }, []);
@@ -46,8 +45,6 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
       const res = await chatService.sendMessage(userMsg);
       if (res.success && res.data) {
         setMessages(res.data.messages);
-        // Sync global state in case the AI modified plan status (simulated behavior)
-        syncData();
       }
     } catch (err) {
       console.error(err);
