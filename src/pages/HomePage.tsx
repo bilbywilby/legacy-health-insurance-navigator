@@ -1,138 +1,114 @@
-// Home page of the app.
-// Currently a demo placeholder "please wait" screen.
-// Replace this file with your actual app UI. Do not delete it to use some other file as homepage. Simply replace the entire contents of this file.
-
-import { useEffect, useMemo, useState } from 'react'
-import { Sparkles } from 'lucide-react'
-
-import { ThemeToggle } from '@/components/ThemeToggle'
-import { HAS_TEMPLATE_DEMO, TemplateDemo } from '@/components/TemplateDemo'
-import { Button } from '@/components/ui/button'
-import { Toaster, toast } from '@/components/ui/sonner'
-
-function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
+import React, { useState, useEffect } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { DashboardMetrics } from '@/components/dashboard-metrics';
+import { ChatInterface } from '@/components/chat-interface';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ShieldAlert, FileText, Activity, CreditCard, PlusCircle } from 'lucide-react';
+import { chatService } from '@/lib/chat';
+import { toast } from 'sonner';
 export function HomePage() {
-  const [coins, setCoins] = useState(0)
-  const [isRunning, setIsRunning] = useState(false)
-  const [startedAt, setStartedAt] = useState<number | null>(null)
-  const [elapsedMs, setElapsedMs] = useState(0)
-
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [insuranceData, setInsuranceData] = useState({
+    deductibleTotal: 3000,
+    deductibleUsed: 1350,
+    oopMax: 6500,
+    oopUsed: 2100,
+  });
   useEffect(() => {
-    if (!isRunning || startedAt === null) return
-
-    const t = setInterval(() => {
-      setElapsedMs(Date.now() - startedAt)
-    }, 250)
-
-    return () => clearInterval(t)
-  }, [isRunning, startedAt])
-
-  const formatted = useMemo(() => formatDuration(elapsedMs), [elapsedMs])
-
-  const onPleaseWait = () => {
-    setCoins((c) => c + 1)
-
-    if (!isRunning) {
-      // Resume from the current elapsed time
-      setStartedAt(Date.now() - elapsedMs)
-      setIsRunning(true)
-      toast.success('Building your app…', {
-        description: "Hang tight — we're setting everything up.",
-      })
-      return
-    }
-
-    setIsRunning(false)
-    toast.info('Still working…', {
-      description: 'You can come back in a moment.',
-    })
-  }
-
-  const onReset = () => {
-    setCoins(0)
-    setIsRunning(false)
-    setStartedAt(null)
-    setElapsedMs(0)
-    toast('Reset complete')
-  }
-
-  const onAddCoin = () => {
-    setCoins((c) => c + 1)
-    toast('Coin added')
-  }
-
+    const fetchState = async () => {
+      const res = await chatService.getMessages();
+      if (res.success && res.data?.insuranceState) {
+        setInsuranceData(res.data.insuranceState);
+      }
+    };
+    fetchState();
+  }, []);
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background text-foreground p-4 overflow-hidden relative">
-      <ThemeToggle />
-      <div className="absolute inset-0 bg-gradient-rainbow opacity-10 dark:opacity-20 pointer-events-none" />
-
-      <div className="text-center space-y-8 relative z-10 animate-fade-in w-full">
-        <div className="flex justify-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-primary floating">
-            <Sparkles className="w-8 h-8 text-white rotating" />
+    <AppLayout container>
+      <div className="space-y-8 animate-fade-in">
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Legacy Health Navigator</h1>
+            <p className="text-muted-foreground">Certified Medical Billing Forensics & Strategic Advocacy</p>
           </div>
-        </div>
-
-        <div className="space-y-3">
-          <h1 className="text-5xl md:text-7xl font-display font-bold text-balance leading-tight">
-            Creating your <span className="text-gradient">app</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto text-pretty">
-            Your application would be ready soon.
-          </p>
-        </div>
-
-        {HAS_TEMPLATE_DEMO ? (
-          <div className="max-w-5xl mx-auto text-left">
-            <TemplateDemo />
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Secure HIPAA-Grade Mode</span>
           </div>
-        ) : (
-          <>
-            <div className="flex justify-center gap-4">
-              <Button
-                size="lg"
-                onClick={onPleaseWait}
-                className="btn-gradient px-8 py-4 text-lg font-semibold hover:-translate-y-0.5 transition-all duration-200"
-                aria-live="polite"
-              >
-                Please Wait
-              </Button>
+        </header>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+            <TabsTrigger value="dashboard">Command Dashboard</TabsTrigger>
+            <TabsTrigger value="chat">Forensic Chat</TabsTrigger>
+          </TabsList>
+          <TabsContent value="dashboard" className="space-y-6">
+            <DashboardMetrics 
+              deductibleTotal={insuranceData.deductibleTotal}
+              deductibleUsed={insuranceData.deductibleUsed}
+              oopMax={insuranceData.oopMax}
+              oopUsed={insuranceData.oopUsed}
+            />
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <Card className="border-blue-500/20 bg-blue-50/50 dark:bg-blue-950/10">
+                <CardHeader className="flex flex-row items-center space-x-4 pb-2">
+                  <ShieldAlert className="h-6 w-6 text-blue-500" />
+                  <CardTitle className="text-lg">Priority Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">High-impact financial strategies based on your current plan usage.</p>
+                  <Button variant="outline" className="w-full justify-start text-left" onClick={() => setActiveTab('chat')}>
+                    <Activity className="mr-2 h-4 w-4" /> Start Pre-Service Audit
+                  </Button>
+                  <Button variant="outline" className="w-full justify-start text-left" onClick={() => setActiveTab('chat')}>
+                    <FileText className="mr-2 h-4 w-4" /> Dispute Medical Bill
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Recent Alerts</CardTitle>
+                  <CardDescription>Automated forensic scanning results</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-4 text-sm">
+                      <div className="mt-0.5 rounded-full bg-amber-100 p-1 dark:bg-amber-900/30 text-amber-600">
+                        <PlusCircle className="h-3 w-3" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Potential Unbundling Detected</p>
+                        <p className="text-muted-foreground">Possible error in recent CPT 99214 coding.</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Knowledge Base</CardTitle>
+                  <CardDescription>Active Insurance Documents</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between text-sm p-2 border rounded bg-muted/30">
+                    <span className="flex items-center gap-2"><FileText className="h-4 w-4" /> 2024_EOC_PPO.pdf</span>
+                    <span className="text-emerald-500 text-xs font-bold uppercase">Active</span>
+                  </div>
+                  <Button variant="ghost" className="w-full text-blue-500 hover:text-blue-600">Manage Vault</Button>
+                </CardContent>
+              </Card>
             </div>
-
-            <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-              <div>
-                Time elapsed:{' '}
-                <span className="font-medium tabular-nums text-foreground">{formatted}</span>
-              </div>
-              <div>
-                Coins:{' '}
-                <span className="font-medium tabular-nums text-foreground">{coins}</span>
-              </div>
-            </div>
-
-            <div className="flex justify-center gap-2">
-              <Button variant="outline" size="sm" onClick={onReset}>
-                Reset
-              </Button>
-              <Button variant="outline" size="sm" onClick={onAddCoin}>
-                Add Coin
-              </Button>
-            </div>
-          </>
-        )}
+          </TabsContent>
+          <TabsContent value="chat" className="min-h-[600px] border rounded-xl bg-card">
+            <ChatInterface />
+          </TabsContent>
+        </Tabs>
+        <footer className="pt-8 border-t text-center text-xs text-muted-foreground space-y-2">
+          <p>The Legacy Navigator is an AI assistant. While specialized in medical billing logic, it does not provide legal or financial advice. All results should be verified by a human professional.</p>
+          <p className="font-medium">IMPORTANT: AI processing limits apply. Verify all insurance claims with your provider directly.</p>
+        </footer>
       </div>
-
-      <footer className="absolute bottom-8 text-center text-muted-foreground/80">
-        <p>Powered by Cloudflare</p>
-      </footer>
-
-      <Toaster richColors closeButton />
-    </div>
-  )
+    </AppLayout>
+  );
 }
