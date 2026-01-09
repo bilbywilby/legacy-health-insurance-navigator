@@ -75,13 +75,19 @@ async function performWebSearch(query: string, numResults = 5): Promise<string> 
     });
     if (!response.ok) throw new Error(`SerpAPI returned ${response.status}`);
     const data: SerpApiResponse = await response.json();
-    // Simplistic formatting for generic web search
     const results = data.organic_results?.map(r => r.snippet).join('\n') || '';
     return results || `No results for "${query}"`;
   } catch (error) {
     return `Search error: ${String(error)}`;
   }
 }
+/**
+ * ARCHITECTURAL ROADMAP: cpt_lookup
+ * Currently utilizing SerpAPI for FMV extraction from web data.
+ * v3.0 TRANSITION: Transitioning to direct ingestion of CMS Machine Readable Files (MRF)
+ * and Transparency in Coverage (TiC) APIs (e.g., Turquoise Health, Healthcare Bluebook)
+ * for payer-specific negotiated rate validation.
+ */
 async function lookupCptRate(code: string, state?: string): Promise<{ rate?: number; source?: string }> {
   const query = `CPT ${code} Medicare allowed amount ${state || ''} 2024 2025`;
   const apiKey = process.env.SERPAPI_KEY;
@@ -98,12 +104,11 @@ async function lookupCptRate(code: string, state?: string): Promise<{ rate?: num
       data.knowledge_graph?.description,
       ...(data.organic_results?.map(r => r.snippet) || [])
     ].join(' ').toLowerCase();
-    // Look for patterns like "$123.45" or "allowed: 123"
     const moneyMatch = text.match(/\$\s?(\d+(?:\.\d{2})?)/);
     if (moneyMatch) {
-      return { 
-        rate: parseFloat(moneyMatch[1]), 
-        source: data.answer_box?.link || data.organic_results?.[0]?.link 
+      return {
+        rate: parseFloat(moneyMatch[1]),
+        source: data.answer_box?.link || data.organic_results?.[0]?.link
       };
     }
     return {};

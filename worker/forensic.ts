@@ -6,11 +6,12 @@ export const DISPUTE_THRESHOLDS = {
   HIGH: 40
 };
 export const DEFAULT_BENCHMARKS: Record<string, number> = {
-  '99213': 92.00, 
-  '99214': 128.00, 
-  '72141': 450.00, 
-  '80053': 14.50, 
-  '45378': 750.00, 
+  '99213': 92.00,
+  '99214': 129.77, // Updated V2.5 Standard Office Visit
+  '72141': 450.00,
+  '72148': 385.50, // Updated V2.5 MRI of spine
+  '45378': 580.20, // Updated V2.5 Colonoscopy
+  '80053': 14.50,
   '90686': 19.00,
   '99203': 115.00,
   '99204': 165.00,
@@ -50,9 +51,9 @@ export function generateDisputeToken(variance: number, bridgeFlag: boolean = fal
  * PURE FUNCTION: Complete deterministic audit of a claim against plan state.
  */
 export function auditClaim(
-  cpt: string, 
-  billedAmount: number, 
-  planState: InsuranceState, 
+  cpt: string,
+  billedAmount: number,
+  planState: InsuranceState,
   benchmarks: Record<string, number>
 ): AuditState {
   const { variance } = calculateFMV(cpt, billedAmount, benchmarks);
