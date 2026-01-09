@@ -1,6 +1,6 @@
 # Cloudflare AI Chat Agents Template
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bilbywilby/legacy-health-insurance-navigator)
 
 A production-ready Cloudflare Workers template for building AI-powered chat applications. Features persistent chat sessions using Durable Objects, tool calling (web search, weather, MCP integration), streaming responses, and a modern React frontend built with shadcn/ui.
 
@@ -123,7 +123,7 @@ All chat endpoints are routed via `/api/chat/{sessionId}/{route}`:
    wrangler deploy
    ```
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bilbywilby/legacy-health-insurance-navigator)
 
 Assets (frontend) are automatically bundled and served. Durable Objects migrate via `wrangler.jsonc`.
 
