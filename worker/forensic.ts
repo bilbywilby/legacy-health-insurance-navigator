@@ -1,9 +1,8 @@
-import { Cpt, BilledAmount } from './types';
+import { Cpt, BilledAmount, InsuranceState, ForensicOutput } from './types';
 import { STANDARD_FORENSIC_BASELINE, CRITICAL_OVERCHARGE_THRESHOLD } from './config';
 export class ForensicEngine {
   /**
    * Calculates FMV Variance based on benchmark records.
-   * Returns a percentage variance from the fair market baseline.
    */
   static calculateFMV(cpt: Cpt, billedAmount: BilledAmount, benchmarks: Record<string, number>): {
     variance: number;
@@ -30,11 +29,43 @@ export class ForensicEngine {
     }
   }
   /**
-   * Generates a unique Strategic Dispute Token for tracking disputes.
+   * Detects contradictions between Policy (EOC) and Billing data.
    */
-  static generateDisputeToken(variance: number): string | null {
-    if (variance < 10) return null;
-    const prefix = variance >= CRITICAL_OVERCHARGE_THRESHOLD ? 'NAV-DS-CRIT' : 'NAV-DS-STD';
+  static detectDiscrepancies(state: InsuranceState, bill: ForensicOutput): {
+    hasDiscrepancy: boolean;
+    reason?: string;
+    severity: 'info' | 'warning' | 'critical';
+  } {
+    // Example: Plan is PPO but bill indicates OON Co-insurance rates
+    if (state.planType === 'PPO' && bill.liability_calc > 500 && bill.fmv_variance > 30) {
+      return {
+        hasDiscrepancy: true,
+        reason: "Liability exceeds PPO Network Benefit Schedule limits.",
+        severity: 'critical'
+      };
+    }
+    return { hasDiscrepancy: false, severity: 'info' };
+  }
+  /**
+   * Calculates annual spend projections.
+   */
+  static calculateBurnRate(logs: any[], oopMax: number): { dailyBurn: number, projectedOopDate: number } {
+    const sortedLogs = [...logs].sort((a, b) => a.timestamp - b.timestamp);
+    if (sortedLogs.length < 2) return { dailyBurn: 0, projectedOopDate: Date.now() };
+    const firstDate = sortedLogs[0].timestamp;
+    const lastDate = sortedLogs[sortedLogs.length - 1].timestamp;
+    const daysDiff = Math.max(1, (lastDate - firstDate) / (1000 * 60 * 60 * 24));
+    const totalSpent = sortedLogs.reduce((acc, log) => acc + (log.metadata?.liability_calc || 0), 0);
+    const dailyBurn = totalSpent / daysDiff;
+    const projectedOopDate = Date.now() + (oopMax / (dailyBurn || 1)) * (1000 * 60 * 60 * 24);
+    return { dailyBurn, projectedOopDate };
+  }
+  /**
+   * Generates a unique Strategic Dispute Token.
+   */
+  static generateDisputeToken(variance: number, bridgeFlag: boolean = false): string | null {
+    if (variance < 10 && !bridgeFlag) return null;
+    let prefix = bridgeFlag ? 'BRIDGE-DS' : (variance >= CRITICAL_OVERCHARGE_THRESHOLD ? 'NAV-DS-CRIT' : 'NAV-DS-STD');
     const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `${prefix}-${randomSuffix}`;
   }

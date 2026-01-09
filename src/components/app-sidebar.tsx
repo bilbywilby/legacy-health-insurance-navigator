@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, MessageSquareText, FileLock2, Settings, ShieldCheck, HeartPulse, FileText } from "lucide-react";
+import { LayoutDashboard, MessageSquareText, FileLock2, Settings, ShieldCheck, HeartPulse, FileText, Activity, Server, Zap } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -58,12 +58,31 @@ export function AppSidebar(): JSX.Element {
         </SidebarGroup>
         <SidebarSeparator />
         <SidebarGroup>
-          <SidebarGroupLabel>Preferences</SidebarGroupLabel>
+          <SidebarGroupLabel>System Health</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Settings">
-                <Settings className="h-4 w-4" /> <span>Settings</span>
-              </SidebarMenuButton>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+                  <Server className="h-3 w-3" /> Audit Bridge
+                </div>
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              </div>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+                  <ShieldCheck className="h-3 w-3" /> PII Scrubber
+                </div>
+                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+              </div>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+                  <Zap className="h-3 w-3" /> DO Sync
+                </div>
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              </div>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
