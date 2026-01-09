@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Calculator, ShieldAlert, Sparkles, AlertTriangle, Fingerprint, Loader2, Search } from 'lucide-react';
+import { Calculator, ShieldAlert, Sparkles, AlertTriangle, Fingerprint, Loader2, Search, Zap } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { chatService } from '@/lib/chat';
+import { perfMonitor } from '@/lib/perf';
 import { toast } from 'sonner';
 interface EstimatorProps {
   deductibleRemaining: number;
@@ -19,6 +20,7 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
   const [cpt, setCpt] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifiedRate, setVerifiedRate] = useState<number | null>(null);
+  const [latency, setLatency] = useState<number | null>(null);
   const [isInNetwork, setIsInNetwork] = useState(true);
   const [isEmergency, setIsEmergency] = useState(false);
   const handleVerify = async () => {
@@ -27,11 +29,13 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
       return;
     }
     setIsVerifying(true);
+    const start = performance.now();
     try {
-      const res = await chatService.lookupCpt(cpt);
+      const res = await perfMonitor.track('lookup', () => chatService.lookupCpt(cpt));
       if (res.success && res.data?.rate) {
         setVerifiedRate(res.data.rate);
         setCost(res.data.rate.toString());
+        setLatency(performance.now() - start);
         toast.success(`Dynamic FMV Locked: ${formatCurrency(res.data.rate)}`);
       } else {
         toast.error("Live benchmarking failed. Using fallback estimate.");
@@ -60,6 +64,11 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
             <Calculator className="h-5 w-5" />
             <CardTitle className="text-lg font-bold">Shop Care Estimator V2.3</CardTitle>
           </div>
+          {latency && (
+            <Badge variant="outline" className="border-blue-500/30 text-blue-400 font-mono text-[9px] flex items-center gap-1">
+              <Zap className="h-2 w-2" /> {latency.toFixed(0)}ms
+            </Badge>
+          )}
         </div>
         <CardDescription className="text-xs font-medium">Real-time CPT FMV Benchmarking Engine.</CardDescription>
       </CardHeader>

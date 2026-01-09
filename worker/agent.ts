@@ -1,6 +1,6 @@
 import { Agent } from 'agents';
 import type { Env } from './core-utils';
-import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry, Cpt, BilledAmount } from './types';
+import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry, Cpt, BilledAmount, SystemMetrics } from './types';
 import { ChatHandler } from './chat';
 import { API_RESPONSES } from './config';
 import { createMessage } from './utils';
@@ -21,6 +21,11 @@ export class ChatAgent extends Agent<Env, ChatState> {
     auditLogs: [],
     lastContextSync: Date.now(),
     benchmarks: {},
+    metrics: {
+      worker_latency: 0,
+      audit_count: 0,
+      scrub_avg_confidence: 0.98
+    },
     insuranceState: {
       deductibleTotal: 3000,
       deductibleUsed: 1350,
@@ -33,7 +38,13 @@ export class ChatAgent extends Agent<Env, ChatState> {
   async onStart(): Promise<void> {
     this.chatHandler = new ChatHandler(this.env.CF_AI_BASE_URL, this.env.CF_AI_API_KEY, this.state.model);
   }
+  private ensureChatHandler() {
+    if (!this.chatHandler) {
+      this.chatHandler = new ChatHandler(this.env.CF_AI_BASE_URL, this.env.CF_AI_API_KEY, this.state.model);
+    }
+  }
   async onRequest(request: Request): Promise<Response> {
+    this.ensureChatHandler();
     try {
       const url = new URL(request.url);
       const method = request.method;
@@ -51,6 +62,18 @@ export class ChatAgent extends Agent<Env, ChatState> {
       return Response.json({ success: false, error: API_RESPONSES.INTERNAL_ERROR }, { status: 500 });
     }
   }
+  private async updateMetrics(latency: number, scrubConfidence?: number) {
+    const metrics = this.state.metrics || { worker_latency: 0, audit_count: 0, scrub_avg_confidence: 0.98 };
+    const audit_count = metrics.audit_count + 1;
+    const worker_latency = (metrics.worker_latency * (audit_count - 1) + latency) / audit_count;
+    const scrub_avg_confidence = scrubConfidence !== undefined 
+      ? (metrics.scrub_avg_confidence * (audit_count - 1) + scrubConfidence) / audit_count
+      : metrics.scrub_avg_confidence;
+    this.setState({
+      ...this.state,
+      metrics: { worker_latency, audit_count, scrub_avg_confidence }
+    });
+  }
   private async logAuditEvent(event: string, detail: string, severity: 'info' | 'warning' | 'critical' = 'info', metadata?: any): Promise<void> {
     const entry: AuditEntry = { id: crypto.randomUUID(), timestamp: Date.now(), event, detail, severity, metadata };
     const currentLogs = this.state.auditLogs || [];
@@ -58,6 +81,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     this.setState({ ...this.state, auditLogs, lastContextSync: Date.now() });
   }
   private async handleCptLookup(body: { code: string; state?: string }): Promise<Response> {
+    const start = Date.now();
     const { code, state } = body;
     const result = await executeTool('cpt_lookup', { code, state }) as any;
     if (result.rate) {
@@ -65,13 +89,14 @@ export class ChatAgent extends Agent<Env, ChatState> {
       this.setState({ ...this.state, benchmarks: updatedBenchmarks });
       await this.logAuditEvent("Dynamic Benchmark", `Fetched FMV for CPT ${code} via Live Intelligence.`, "info", { code, rate: result.rate, source: result.source });
     }
+    await this.updateMetrics(Date.now() - start);
     return Response.json({ success: true, data: result });
   }
   private async handleChatMessage(body: { message: string; model?: string }): Promise<Response> {
+    const start = Date.now();
     const { message, model } = body;
     if (!this.chatHandler) throw new Error("ChatHandler failure.");
     const rawInput = message?.trim() || "";
-    // Phase 13: Auto-CPT Detection & Dynamic Lookup
     const cptMatch = rawInput.match(/\b\d{5}\b/);
     if (cptMatch) {
       const code = cptMatch[0];
@@ -122,6 +147,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
       const response = await this.chatHandler.processMessage(cleanInput, this.state.messages, this.state.documents, this.state.insuranceState);
       const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
       this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
+      await this.updateMetrics(Date.now() - start, scrubRes.confidence);
       return Response.json({ success: true, data: this.state });
     } catch (error) {
       this.setState({ ...this.state, isProcessing: false });

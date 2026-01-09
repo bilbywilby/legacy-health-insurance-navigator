@@ -1,6 +1,11 @@
 import { create } from 'zustand';
-import { chatService } from '@/lib/chat';
+import { immer } from 'zustand/middleware/immer';
 import type { InsuranceState, InsuranceDocument, AuditEntry } from '../../worker/types';
+interface SystemMetrics {
+  avgAuditMs: number;
+  totalAudits: number;
+  lastScrubScore: number;
+}
 interface AppState {
   // Navigation
   activeTab: string;
@@ -12,6 +17,7 @@ interface AppState {
   documents: InsuranceDocument[];
   auditLogs: AuditEntry[];
   lastSync: number;
+  systemMetrics: SystemMetrics;
   // Actions
   setActiveTab: (tab: string) => void;
   setIsVobOpen: (open: boolean) => void;
@@ -19,27 +25,44 @@ interface AppState {
   closeAppealGenerator: () => void;
   setInsuranceState: (state: InsuranceState) => void;
   setDocuments: (docs: InsuranceDocument[]) => void;
+  updateSystemMetrics: (metrics: Partial<SystemMetrics>) => void;
 }
-export const useAppStore = create<AppState>((set) => ({
-  activeTab: 'dashboard',
-  isVobOpen: false,
-  isAppealModalOpen: false,
-  selectedAuditId: null,
-  insuranceState: {
-    deductibleTotal: 3000,
-    deductibleUsed: 1350,
-    oopMax: 6500,
-    oopUsed: 2100,
-    planType: 'PPO',
-    networkStatus: 'In-Network'
-  },
-  documents: [],
-  auditLogs: [],
-  lastSync: Date.now(),
-  setActiveTab: (tab) => set({ activeTab: tab }),
-  setIsVobOpen: (open) => set({ isVobOpen: open }),
-  openAppealGenerator: (auditId) => set({ isAppealModalOpen: true, selectedAuditId: auditId || null }),
-  closeAppealGenerator: () => set({ isAppealModalOpen: false, selectedAuditId: null }),
-  setInsuranceState: (insuranceState) => set({ insuranceState }),
-  setDocuments: (documents) => set({ documents }),
-}));
+export const useAppStore = create<AppState>()(
+  immer((set) => ({
+    activeTab: 'dashboard',
+    isVobOpen: false,
+    isAppealModalOpen: false,
+    selectedAuditId: null,
+    insuranceState: {
+      deductibleTotal: 3000,
+      deductibleUsed: 1350,
+      oopMax: 6500,
+      oopUsed: 2100,
+      planType: 'PPO',
+      networkStatus: 'In-Network'
+    },
+    documents: [],
+    auditLogs: [],
+    lastSync: Date.now(),
+    systemMetrics: {
+      avgAuditMs: 0,
+      totalAudits: 0,
+      lastScrubScore: 0.98,
+    },
+    setActiveTab: (tab) => set((state) => { state.activeTab = tab; }),
+    setIsVobOpen: (open) => set((state) => { state.isVobOpen = open; }),
+    openAppealGenerator: (auditId) => set((state) => {
+      state.isAppealModalOpen = true;
+      state.selectedAuditId = auditId || null;
+    }),
+    closeAppealGenerator: () => set((state) => {
+      state.isAppealModalOpen = false;
+      state.selectedAuditId = null;
+    }),
+    setInsuranceState: (insuranceState) => set((state) => { state.insuranceState = insuranceState; }),
+    setDocuments: (documents) => set((state) => { state.documents = documents; }),
+    updateSystemMetrics: (metrics) => set((state) => {
+      state.systemMetrics = { ...state.systemMetrics, ...metrics };
+    }),
+  }))
+);

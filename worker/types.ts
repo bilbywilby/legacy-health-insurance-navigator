@@ -73,6 +73,11 @@ export interface AuditEntry {
   severity: 'info' | 'warning' | 'critical';
   metadata?: Record<string, unknown>;
 }
+export interface SystemMetrics {
+  worker_latency: number;
+  audit_count: number;
+  scrub_avg_confidence: number;
+}
 export interface ForensicOutput {
   liability_calc: number;
   confidence_score: number;
@@ -82,6 +87,9 @@ export interface ForensicOutput {
   dispute_token?: string | null;
   is_overcharge?: boolean;
   benchmark_source?: BenchmarkSource;
+  performance?: {
+    audit_ms: number;
+  };
 }
 export interface ChatState {
   messages: Message[];
@@ -95,6 +103,7 @@ export interface ChatState {
   auditLogs?: AuditEntry[];
   lastContextSync?: number;
   benchmarks?: Record<string, number>;
+  metrics?: SystemMetrics;
 }
 export interface SessionInfo {
   id: string;
