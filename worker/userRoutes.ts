@@ -1,9 +1,8 @@
 import { Hono } from "hono";
-import { getAgentByName } from 'agents';
-import { ChatAgent } from './agent';
+import { getAgentByName } from 'agents';import { ChatAgent } from './agent';
 import { API_RESPONSES } from './config';
 import { Env, getAppController, registerSession, unregisterSession } from "./core-utils";
-
+import { ForensicScrubber } from "./scrubber";
 /**
  * DO NOT MODIFY THIS FUNCTION. Only for your reference.
  */
@@ -201,10 +200,27 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             return c.json({ 
                 success: false, 
                 error: 'Failed to clear all sessions' 
+            }, { status: 500 });        }
+    });
+    /**
+     * Forensic PII Scrubbing Endpoint
+     * POST /api/chat/:sessionId/scrub
+     */
+    app.post('/api/chat/:sessionId/scrub', async (c) => {
+        try {
+            const { text } = await c.req.json();
+            if (!text || text.length > 5000) {
+                return c.json({ success: false, error: 'Text required (max 5000 chars)' }, { status: 400 });
+            }
+            const result = await ForensicScrubber.process(text);
+            return c.json({ success: true, data: result });
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: 'Scrubbing failed'
             }, { status: 500 });
         }
     });
-
     // Example route - you can remove this
     app.get('/api/test', (c) => c.json({ success: true, data: { name: 'this works' }}));
     

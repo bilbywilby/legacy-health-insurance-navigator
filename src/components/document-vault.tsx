@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileLock2, ShieldCheck, Plus, Trash2, FileText, AlertCircle, Sparkles, Loader2 } from 'lucide-react';
 import { chatService } from '@/lib/chat';
+import { scrubService } from '@/lib/scrubber';
 import type { InsuranceDocument, InsuranceDocumentType, InsuranceState } from '../../worker/types';
 import { toast } from 'sonner';
 import { VaultTemplates } from './vault-templates';
@@ -17,6 +18,9 @@ interface DocumentVaultProps {
 }
 export function DocumentVault({ documents, onRefresh, insuranceState }: DocumentVaultProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubInput, setScrubInput] = useState('');
+  const [scrubResult, setScrubResult] = useState<{ text: string; map: Record<string, string>; conf: number } | null>(null);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [newDoc, setNewDoc] = useState({
@@ -72,6 +76,18 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
     } else {
       throw new Error('Upload failed');
     }
+  };
+  const handleTestScrub = async () => {
+    if (!scrubInput.trim()) return;
+    setIsScrubbing(true);
+    const res = await scrubService.scrubText(scrubInput);
+    if (res.success && res.data) {
+      setScrubResult({ text: res.data.scrubbedText, map: res.data.tokenMap, conf: res.data.confidence });
+      toast.success("De-identification complete");
+    } else {
+      toast.error("Scrubbing failed");
+    }
+    setIsScrubbing(false);
   };
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -150,6 +166,49 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
           </CardContent>
         </Card>
       )}
+      <Card className="border-emerald-500/20 bg-emerald-500/5 shadow-soft">
+        <CardHeader>
+          <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            Forensic Scrubber Test-Bed
+          </CardTitle>
+          <CardDescription className="text-[11px]">Verify zero-knowledge PII de-identification before policy registration.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase text-muted-foreground">Raw Data Input</label>
+              <Textarea 
+                placeholder="Paste sample text with SSN, Email, or DOB..." 
+                className="h-32 text-xs font-mono"
+                value={scrubInput}
+                onChange={(e) => setScrubInput(e.target.value)}
+              />
+              <Button size="sm" onClick={handleTestScrub} disabled={isScrubbing || !scrubInput} className="w-full bg-emerald-600 hover:bg-emerald-700">
+                {isScrubbing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                Verify & Hash
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase text-muted-foreground">Forensic Output</label>
+              <div className="h-32 rounded-md border bg-background p-3 overflow-y-auto font-mono text-[10px] whitespace-pre-wrap">
+                {scrubResult ? scrubResult.text : <span className="text-muted-foreground italic">Awaiting de-identification...</span>}
+              </div>
+              {scrubResult && (
+                <div className="p-2 bg-emerald-100/50 dark:bg-emerald-950/20 rounded border border-emerald-500/20 flex justify-between items-center">
+                  <span className="text-[9px] font-bold text-emerald-700 uppercase">Detection Density Confidence:</span>
+                  <Badge variant="outline" className="text-[9px] bg-emerald-500 text-white border-0">{Math.round(scrubResult.conf * 100)}%</Badge>
+                </div>
+              )}
+            </div>
+          </div>
+          {scrubResult && Object.keys(scrubResult.map).length > 0 && (
+            <div className="p-3 bg-muted/30 rounded-lg border text-[9px] font-mono grid grid-cols-2 gap-2">
+              {Object.entries(scrubResult.map).map(([hash, type]) => <div key={hash} className="truncate"><span className="text-blue-600 font-bold">{hash}</span>: {type}</div>)}
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {documents.map(doc => (
           <Card key={doc.id} className="group relative border-l-4 border-l-blue-500/50 hover:border-l-blue-500 transition-all">

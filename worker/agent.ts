@@ -5,6 +5,7 @@ import { ChatHandler } from './chat';
 import { API_RESPONSES, CRITICAL_OVERCHARGE_THRESHOLD } from './config';
 import { createMessage } from './utils';
 import { ForensicEngine } from './forensic';
+import { ForensicScrubber } from './scrubber';
 // Static CPT Benchmarks based on 2024 Medicare/National Averages
 const CPT_BENCHMARKS: Record<string, number> = {
   '99213': 92.00,   // Mid-level office visit
@@ -76,14 +77,6 @@ export class ChatAgent extends Agent<Env, ChatState> {
       return Response.json({ success: false, error: API_RESPONSES.INTERNAL_ERROR }, { status: 500 });
     }
   }
-  private scrubPII(content: string): string {
-    return content
-      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN-REDACTED]")
-      .replace(/\b\d{10,12}\b/g, "[ID-REDACTED]")
-      .replace(/\b[\w.-]+@[\w.-]+\.\w{2,4}\b/g, "[EMAIL-REDACTED]")
-      .replace(/\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g, "[DOB-REDACTED]")
-      .replace(/\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b/g, "[POLICY-REDACTED]");
-  }
   private async logAuditEvent(event: string, detail: string, severity: 'info' | 'warning' | 'critical' = 'info'): Promise<void> {
     const entry: AuditEntry = {
       id: crypto.randomUUID(),
@@ -110,14 +103,22 @@ export class ChatAgent extends Agent<Env, ChatState> {
   private async handleChatMessage(body: { message: string; model?: string; stream?: boolean }): Promise<Response> {
     const { message, model } = body;
     if (!message?.trim()) return Response.json({ success: false, error: API_RESPONSES.MISSING_MESSAGE }, { status: 400 });
-    // Scrub PII immediately
-    const cleanInput = this.scrubPII(message.trim());
+    
+    // Centralized Forensic Scrubbing
+    const scrubRes = await ForensicScrubber.process(message.trim());
+    const cleanInput = scrubRes.scrubbedText;
+    
     if (model && model !== this.state.model) {
       this.setState({ ...this.state, model });
       this.chatHandler?.updateModel(model);
     }
+    
+    if (scrubRes.confidence < 1.0) {
+      await this.logAuditEvent("Forensic De-identification", `Scrubbed ${Object.keys(scrubRes.tokenMap).length} tokens. Confidence: ${scrubRes.confidence}`, "info");
+    }
+
     // Detect CPT and Amount for FMV Check
-    const cptMatch = cleanInput.match(/\b\d{5}\b/);
+    const cptMatch = message.match(/\b\d{5}\b/);
     const amountMatch = cleanInput.match(/\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
     if (cptMatch && amountMatch) {
       const cpt: Cpt = cptMatch[0];
@@ -152,10 +153,10 @@ export class ChatAgent extends Agent<Env, ChatState> {
     }
   }
   private async handleDocumentUpload(doc: Omit<InsuranceDocument, 'uploadDate' | 'status'>): Promise<Response> {
-    const scrubbedContent = this.scrubPII(doc.content);
+    const scrubRes = await ForensicScrubber.process(doc.content);
     const newDoc: InsuranceDocument = {
       ...doc,
-      content: scrubbedContent,
+      content: scrubRes.scrubbedText,
       uploadDate: Date.now(),
       status: 'active'
     };

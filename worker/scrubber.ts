@@ -1,73 +1,52 @@
-import { ScrubResponse, ForensicRule } from './types';
-import { ComplianceLogger } from './compliance';
+import { ScrubResponse } from './types';
 export class ForensicScrubber {
-  private static SALT = "LEGACY_NAV_V2.4_IMMUTABLE_SALT_" + "SECURE_BASE";
-  private static RULES: ForensicRule[] = [
-    { pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacementLabel: 'SSN', confidenceWeight: 1.0 },
-    { pattern: /\b\d{10}\b/g, replacementLabel: 'NPI', confidenceWeight: 0.9 },
-    { pattern: /\b[A-Z][0-9][A-Z0-9]\.[A-Z0-9]{1,4}\b/g, replacementLabel: 'ICD10', confidenceWeight: 0.85 },
-    { pattern: /\b\d{5}\b/g, replacementLabel: 'CPT_OR_ZIP', confidenceWeight: 0.6 },
-    { pattern: /\b[\w.-]+@[\w.-]+\.\w{2,4}\b/g, replacementLabel: 'EMAIL', confidenceWeight: 1.0 },
-    { pattern: /\b(?:\+?1[-. ]?)?\(?([2-9][0-8][0-9])\)?[-. ]?([2-9][0-9]{2})[-. ]?([0-9]{4})\b/g, replacementLabel: 'PHONE', confidenceWeight: 0.9 },
-    { pattern: /\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g, replacementLabel: 'DOB', confidenceWeight: 0.95 },
-    { pattern: /\bMRN-?[A-Z0-9]{6,12}\b/gi, replacementLabel: 'MRN', confidenceWeight: 1.0 },
-    { pattern: /\b\d{1,5}\s(?:[A-Z0-9.-]+\s){1,5}(?:STREET|ST|AVE|AVENUE|ROAD|RD|BOULEVARD|BLVD|DRIVE|DR|LANE|LN|WAY)\b/gi, replacementLabel: 'ADDRESS', confidenceWeight: 0.8 },
-    { pattern: /\bPAT-ID-[A-Z0-9]{8,12}\b/gi, replacementLabel: 'PATIENT_ID', confidenceWeight: 1.0 },
-    { pattern: /\bCLM-REF-[A-Z0-9]{8,12}\b/gi, replacementLabel: 'CLAIM_REF', confidenceWeight: 1.0 }
-  ];
+  private static PII_PATTERNS = {
+    SSN: /\b\d{3}-\d{2}-\d{4}\b/g,
+    NPI: /\b\d{10}\b/g,
+    EMAIL: /\b[\w.-]+@[\w.-]+\.\w{2,4}\b/g,
+    DOB: /\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g,
+    PHONE: /\b(?:\+?1[-. ]?)?\(?([2-9][0-8][0-9])\)?[-. ]?([2-9][0-9]{2})[-. ]?([0-9]{4})\b/g,
+    POLICY: /\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b/g,
+    ADDRESS: /\b\d{1,5}\s(?:[A-Z0-9.-]+\s){1,5}(?:STREET|ST|AVE|AVENUE|ROAD|RD|BOULEVARD|BLVD|DRIVE|DR|LANE|LN|WAY)\b/gi
+  };
+  /**
+   * Deterministic hashing for PII tokens using SHA-256 via Web Crypto API.
+   * This ensures the same PII string results in the same hash within a session context.
+   */
   private static async hashToken(text: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(this.SALT);
-    const msgData = encoder.encode(text.toLowerCase());
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    const signature = await crypto.subtle.sign('HMAC', key, msgData);
-    const hashArray = Array.from(new Uint8Array(signature));
+    const msgUint8 = new TextEncoder().encode(text.toLowerCase());
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return `[PSEUDO-${hashHex.substring(0, 12).toUpperCase()}]`;
+    return `[HASH-${hashHex.substring(0, 12).toUpperCase()}]`;
   }
+  /**
+   * Processes text to identify and replace PII with deterministic hash tokens.
+   */
   static async process(text: string): Promise<ScrubResponse> {
     let scrubbedText = text;
     const tokenMap: Record<string, string> = {};
-    let totalDetected = 0;
-    let confidenceSum = 0;
-    for (const rule of this.RULES) {
-      const matches = text.match(rule.pattern);
+    let matchCount = 0;
+    // Iterate through all PII patterns
+    for (const [type, pattern] of Object.entries(this.PII_PATTERNS)) {
+      const matches = text.match(pattern);
       if (matches) {
         for (const match of matches) {
           const hash = await this.hashToken(match);
           if (!tokenMap[hash]) {
-            tokenMap[hash] = rule.replacementLabel;
+            tokenMap[hash] = `REDACTED_${type}`; // Mapping to category for forensic structure
           }
           scrubbedText = scrubbedText.replace(match, hash);
-          totalDetected++;
-          confidenceSum += rule.confidenceWeight;
+          matchCount++;
         }
       }
     }
-    const averageConfidence = totalDetected > 0 ? Math.min(1.0, confidenceSum / totalDetected) : 1.0;
-    const outcome = { scrubbedText, confidence: averageConfidence };
-    await ComplianceLogger.logOperation('PII_SCRUB', { text_length: text.length }, outcome);
+    // Confidence score based on detection density
+    const confidence = text.length > 0 ? Math.min(1.0, 1.0 - (matchCount / (text.split(' ').length || 1))) : 1.0;
     return {
       scrubbedText,
       tokenMap,
-      confidence: averageConfidence
-    };
-  }
-  static async runSelfTest(): Promise<ScrubResponse> {
-    const sample = "Patient PAT-ID-99283411 with SSN 000-00-0000 at 123 Main St.";
-    const result = await this.process(sample);
-    return {
-      ...result,
-      testResults: {
-        passed: result.confidence > 0.8 && result.scrubbedText.includes('[PSEUDO-'),
-        details: "Automated forensic validation suite successful."
-      }
+      confidence
     };
   }
 }

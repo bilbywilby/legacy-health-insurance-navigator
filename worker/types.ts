@@ -13,6 +13,14 @@ export interface ErrorResult {
 }
 export type Cpt = string;
 export type BilledAmount = number;
+export interface ScrubResponse {
+  scrubbedText: string;
+  tokenMap: Record<string, string>;
+  confidence: number;
+}
+export interface ScrubRequest {
+  text: string;
+}
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -49,6 +57,7 @@ export interface AuditEntry {
   event: string;
   detail: string;
   severity: 'info' | 'warning' | 'critical';
+  metadata?: Record<string, unknown>;
 }
 export interface ForensicOutput {
   liability_calc: number;
