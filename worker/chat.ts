@@ -24,17 +24,6 @@ export class ChatHandler {
   }> {
     const messages = this.buildConversationMessages(message, conversationHistory, documents, insuranceState);
     const toolDefinitions = await getToolDefinitions();
-    if (onChunk) {
-      const stream = await this.client.chat.completions.create({
-        model: this.model,
-        messages,
-        tools: toolDefinitions,
-        tool_choice: 'auto',
-        max_completion_tokens: 16000,
-        stream: true,
-      });
-      return this.handleStreamResponse(stream, message, conversationHistory, documents, insuranceState, onChunk);
-    }
     const completion = await this.client.chat.completions.create({
       model: this.model,
       messages,
@@ -45,57 +34,6 @@ export class ChatHandler {
     });
     return this.handleNonStreamResponse(completion, message, conversationHistory, documents, insuranceState);
   }
-  private async handleStreamResponse(
-    stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
-    message: string,
-    conversationHistory: Message[],
-    documents: InsuranceDocument[],
-    insuranceState: InsuranceState | undefined,
-    onChunk: (chunk: string) => void
-  ) {
-    let fullContent = '';
-    const accumulatedToolCalls: ChatCompletionMessageFunctionToolCall[] = [];
-    try {
-      for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta;
-        if (delta?.content) {
-          fullContent += delta.content;
-          onChunk(delta.content);
-        }
-        if (delta?.tool_calls) {
-          for (let i = 0; i < delta.tool_calls.length; i++) {
-            const deltaToolCall = delta.tool_calls[i];
-            if (!accumulatedToolCalls[i]) {
-              accumulatedToolCalls[i] = {
-                id: deltaToolCall.id || `tool_${Date.now()}_${i}`,
-                type: 'function',
-                function: {
-                  name: deltaToolCall.function?.name || '',
-                  arguments: deltaToolCall.function?.arguments || ''
-                }
-              };
-            } else {
-              if (deltaToolCall.function?.name && !accumulatedToolCalls[i].function.name) {
-                accumulatedToolCalls[i].function.name = deltaToolCall.function.name;
-              }
-              if (deltaToolCall.function?.arguments) {
-                accumulatedToolCalls[i].function.arguments += deltaToolCall.function.arguments;
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Stream processing error:', error);
-      throw new Error('Stream processing failed');
-    }
-    if (accumulatedToolCalls.length > 0) {
-      const executedTools = await this.executeToolCalls(accumulatedToolCalls);
-      const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, insuranceState, accumulatedToolCalls, executedTools);
-      return { content: finalResponse, toolCalls: executedTools };
-    }
-    return { content: fullContent };
-  }
   private async handleNonStreamResponse(
     completion: OpenAI.Chat.Completions.ChatCompletion,
     message: string,
@@ -105,7 +43,9 @@ export class ChatHandler {
   ) {
     const responseMessage = completion.choices[0]?.message;
     if (!responseMessage) return { content: 'I apologize, but I encountered an issue.' };
-    if (!responseMessage.tool_calls) return { content: responseMessage.content || 'I apologize, but I encountered an issue.' };
+    if (!responseMessage.tool_calls) {
+        return { content: responseMessage.content || 'I apologize, but I encountered an issue.' };
+    }
     const toolCalls = await this.executeToolCalls(responseMessage.tool_calls as ChatCompletionMessageFunctionToolCall[]);
     const finalResponse = await this.generateToolResponse(message, conversationHistory, documents, insuranceState, responseMessage.tool_calls, toolCalls);
     return { content: finalResponse, toolCalls };
@@ -134,7 +74,7 @@ export class ChatHandler {
     const followUpCompletion = await this.client.chat.completions.create({
       model: this.model,
       messages: [
-        { role: 'system', content: 'You are the Legacy Health Navigator. Respond naturally and strategically to the data discovered.' },
+        { role: 'system', content: 'You are the Legacy Health Navigator. Respond with forensic precision and structured financial data.' },
         ...history.slice(-3).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage },
         { role: 'assistant', content: null, tool_calls: openAiToolCalls },
@@ -149,37 +89,34 @@ export class ChatHandler {
     return followUpCompletion.choices[0]?.message?.content || 'Strategic step compiled.';
   }
   private buildConversationMessages(userMessage: string, history: Message[], documents: InsuranceDocument[], insuranceState?: InsuranceState) {
-    const docContext = documents.length > 0
-      ? `## REFERENCE CONTEXT (Data Primacy Documents)\n${documents.map(d => `[DOCUMENT: ${d.title} (${d.type})]\n${d.content}\n---`).join('\n')}`
-      : 'No specific policy documents have been uploaded yet. Encourage EOC/SBC upload.';
-    const stateContext = insuranceState 
-      ? `## YTD FINANCIAL STATUS\n- Deductible: ${insuranceState.deductibleUsed}/${insuranceState.deductibleTotal}\n- OOP Max: ${insuranceState.oopUsed}/${insuranceState.oopMax}`
+    const stateContext = insuranceState
+      ? `## YTD FINANCIAL STATUS\n- Plan: ${insuranceState.planType || 'PPO'}\n- Network: ${insuranceState.networkStatus || 'In-Network'}\n- Deductible: ${insuranceState.deductibleUsed}/${insuranceState.deductibleTotal}\n- OOP Max: ${insuranceState.oopUsed}/${insuranceState.oopMax}`
       : 'YTD tracking not initialized.';
     const systemPrompt = `
-      # MASTER PERSONA: Senior Health Insurance Auditor (Legacy Navigator)
-      You are an elite AI agent specialized in Forensic Analysis of medical billing and insurance contracts.
+      # MASTER PERSONA: Senior Health Insurance Auditor (V2 Forensic Core)
+      You are an elite AI agent specialized in Forensic Analysis of medical billing.
       ## CORE OPERATING PRINCIPLES
-      - **Data Primacy**: Always prioritize uploaded policy documents (EOC/SBC) over general knowledge.
-      - **Financial Precision**: Calculate responsibility using JetBrains Mono formatting for codes and figures.
-      - **State-Awareness**: Use the YTD Status to suggest accelerating or deferring care.
+      - **Forensic JSON Schema**: For every financial calculation, include a hidden block:
+        <forensic_data>
+        {
+          "liability_calc": number,
+          "confidence_score": 0.0-1.0,
+          "code_validation": boolean,
+          "strategic_disclaimer": "string"
+        }
+        </forensic_data>
+      - **Validation Logic**: Use insurance state math to verify patient responsibility. 
+      - **JetBrains Mono**: Format all CPT codes and costs in \`monospace\`.
       ${stateContext}
-      ${docContext}
-      ## STRATEGIC DIRECTIVES (LEGACY MODE)
-      1. **Code Alignment**: Provide CPT/HCPCS codes for any procedure. Explain how "Coding Intensity" affects bills.
-      2. **Pre-Service Protocol**: For care >$500, suggest a "Verification of Benefits" checklist.
-      3. **Financial Arbitrage**: Advise on HSA/FSA spend-down vs. deductible reset dates in Q4.
-      4. **Dispute Escalation**: Provide instructions for Independent Medical Reviews (IMR) if appeals fail.
-      ## MODULE: PROACTIVE CARE & COST NAVIGATOR
-      - **Appointment Validation**: Identify Network Status (Tier 1 vs Tier 2). Ask for NPI/Tax ID.
-      - **Long-Term Impact**: Calculate how a cost hits the OOP Max. Explain "Incentive to Bundle" if near limits.
-      - **Plan Maximization (ROI)**: Hunt for "Value-Added" benefits like $0 Wellness Exams, screenings, or gym reimbursements.
+      ## STRATEGIC DIRECTIVES
+      1. **PII Warning**: Confirm you are operating on de-identified data (PII Scrub Active).
+      2. **Liability Audit**: If a claim exceeds the remaining OOP Max, flag it immediately.
+      3. **Shop Care Logic**: If asked about future costs, calculate the "Net Patient Responsibility" based on remaining deductible.
       ## REGULATORY FRAMEWORK
-      - **No Surprises Act**: Flag balance billing in emergency settings.
-      - **ERISA**: Apply federal standards for employer-sponsored plans.
-      ## INTERACTION STYLE
-      - Format technical data in JetBrains Mono.
-      - End every response with a "Next Strategic Step".
-      - Disclaimer: "Legacy Navigator provides financial advocacy, not legal or clinical advice."
+      - **No Surprises Act**: Mandatory flag for potential balance billing.
+      - **ERISA Compliance**: Audit against federal standards.
+      End every response with a "Next Strategic Step".
+      Disclaimer: "Legacy Navigator provides financial advocacy, not legal or clinical advice."
     `.trim();
     return [
       { role: 'system' as const, content: systemPrompt },

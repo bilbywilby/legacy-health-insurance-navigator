@@ -1,4 +1,4 @@
-import type { Message, ChatState, ToolCall, WeatherResult, MCPResult, ErrorResult, SessionInfo, InsuranceDocument } from '../../worker/types';
+import type { Message, ChatState, ToolCall, SessionInfo, InsuranceDocument, InsuranceState, AuditEntry } from '../../worker/types';
 export interface ChatResponse {
   success: boolean;
   data?: ChatState;
@@ -16,6 +16,26 @@ class ChatService {
     this.sessionId = crypto.randomUUID();
     this.baseUrl = `/api/chat/${this.sessionId}`;
   }
+  async syncContext(state: Partial<InsuranceState>, documents?: InsuranceDocument[]): Promise<ChatResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/context`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ insuranceState: state, documents }),
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: 'Context sync failed' };
+    }
+  }
+  async getAuditLogs(): Promise<{ success: boolean; data?: AuditEntry[] }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/audit`);
+      return await response.json();
+    } catch (error) {
+      return { success: false };
+    }
+  }
   async sendMessage(
     message: string,
     model?: string,
@@ -27,25 +47,22 @@ class ChatService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, model, stream: !!onChunk }),
       });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      if (onChunk && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            if (chunk) onChunk(chunk);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      // Post-process to extract forensic metadata if present
+      if (data.success && data.data?.messages) {
+        const lastMsg = data.data.messages[data.data.messages.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant') {
+          const match = lastMsg.content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/);
+          if (match) {
+            try {
+              const forensic = JSON.parse(match[1]);
+              console.log("Forensic Audit Metadata:", forensic);
+            } catch (e) {}
           }
-        } finally {
-          reader.releaseLock();
         }
-        return { success: true };
       }
-      return await response.json();
+      return data;
     } catch (error) {
       console.error('Failed to send message:', error);
       return { success: false, error: 'Failed to send message' };
@@ -65,9 +82,7 @@ class ChatService {
   }
   async deleteDocument(id: string): Promise<ChatResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/documents/${id}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(`${this.baseUrl}/documents/${id}`, { method: 'DELETE' });
       return await response.json();
     } catch (error) {
       return { success: false, error: 'Failed to delete document' };
@@ -98,46 +113,6 @@ class ChatService {
   switchSession(sessionId: string): void {
     this.sessionId = sessionId;
     this.baseUrl = `/api/chat/${sessionId}`;
-  }
-  async createSession(title?: string, sessionId?: string, firstMessage?: string): Promise<{ success: boolean; data?: { sessionId: string; title: string }; error?: string }> {
-    try {
-      const response = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, sessionId, firstMessage })
-      });
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Failed to create session' };
-    }
-  }
-  async listSessions(): Promise<{ success: boolean; data?: SessionInfo[]; error?: string }> {
-    try {
-      const response = await fetch('/api/sessions');
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Failed to list sessions' };
-    }
-  }
-  async deleteSession(sessionId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Failed to delete session' };
-    }
-  }
-  async updateSessionTitle(sessionId: string, title: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/title`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title })
-      });
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Failed to update session title' };
-    }
   }
 }
 export const chatService = new ChatService();

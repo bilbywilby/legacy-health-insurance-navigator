@@ -5,131 +5,96 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Calculator, ShieldAlert, Search, Zap, Loader2, AlertTriangle, Fingerprint, FileCheck } from 'lucide-react';
-import { formatCurrency, cn } from '@/lib/utils';
-import { chatService } from '@/lib/chat';
-import { perfMonitor } from '@/lib/perf';
-import { toast } from 'sonner';
+import { Calculator, ShieldAlert, TrendingUp, Info } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 interface EstimatorProps {
   deductibleRemaining: number;
   oopRemaining: number;
+  onEstimateChange?: (val: number) => void;
 }
 export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: EstimatorProps) {
   const [cost, setCost] = useState<string>('');
-  const [cpt, setCpt] = useState<string>('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifiedRate, setVerifiedRate] = useState<number | null>(null);
-  const [latency, setLatency] = useState<number | null>(null);
-  const handleVerify = async () => {
-    if (!cpt || cpt.length !== 5) {
-      toast.error("Valid 5-digit CPT code required");
-      return;
-    }
-    setIsVerifying(true);
-    const start = performance.now();
-    try {
-      const res = await perfMonitor.track('lookup', () => chatService.lookupCpt(cpt));
-      if (res.success && res.data?.rate) {
-        setVerifiedRate(res.data.rate);
-        setCost(res.data.rate.toString());
-        setLatency(performance.now() - start);
-        toast.success(`Dynamic FMV Locked: ${formatCurrency(res.data.rate)}`);
-      } else {
-        toast.error("Live benchmarking failed. Using fallback estimate.");
-      }
-    } catch (err) {
-      toast.error("Intelligence bridge timeout.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
+  const [isInNetwork, setIsInNetwork] = useState(true);
   const estimate = parseFloat(cost) || 0;
-  const HIGH_THRESHOLD = 40; // Align with worker/forensic.ts
-  const variancePercent = verifiedRate ? ((estimate / (verifiedRate * 1.4)) - 1) * 100 : 0;
-  const isCriticalOvercharge = variancePercent >= HIGH_THRESHOLD;
-  const netResponsibility = Math.min(estimate, oopRemaining);
-  const oopImpactPercent = Math.round((netResponsibility / Math.max(1, oopRemaining)) * 100);
+  // Logic: Deductible First -> Co-insurance (assume 20%) -> OOP Max limit
+  const deductibleApplied = Math.min(estimate, deductibleRemaining);
+  const remainingAfterDeductible = Math.max(0, estimate - deductibleApplied);
+  const coinsurance = remainingAfterDeductible * (isInNetwork ? 0.2 : 0.4);
+  const rawTotal = deductibleApplied + coinsurance;
+  const netResponsibility = Math.min(rawTotal, oopRemaining);
+  const oopImpactPercent = Math.round((netResponsibility / oopRemaining) * 100);
   return (
-    <Card className="glass-dark border-blue-500/20 shadow-glass overflow-hidden">
-      <CardHeader className="border-b border-white/5 pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-blue-500">
-            <Calculator className="h-5 w-5" />
-            <CardTitle className="text-lg font-bold">Shop Care Estimator</CardTitle>
-          </div>
-          {latency !== null && (
-            <Badge variant="outline" className="border-blue-500/30 text-blue-400 font-mono text-[9px] flex items-center gap-1">
-              <Zap className="h-2 w-2" /> {latency.toFixed(0)}ms
-            </Badge>
-          )}
+    <Card className="glass-dark border-blue-500/20 shadow-glass">
+      <CardHeader>
+        <div className="flex items-center gap-2 text-blue-500 mb-1">
+          <Calculator className="h-5 w-5" />
+          <CardTitle className="text-lg">Shop Care Estimator</CardTitle>
         </div>
-        <CardDescription className="text-xs font-medium">Real-time CPT FMV Benchmarking Engine.</CardDescription>
+        <CardDescription className="text-xs">Predict financial impact on your specific plan state.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6 pt-6">
+      <CardContent className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Audit CPT Code</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g. 99214"
-                className="bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500 font-mono"
-                value={cpt}
-                maxLength={5}
-                onChange={(e) => setCpt(e.target.value)}
+            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Estimated Procedure Cost</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+              <Input 
+                type="number" 
+                placeholder="0.00" 
+                className="pl-7 bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500" 
+                value={cost}
+                onChange={(e) => setCost(e.target.value)}
               />
-              <Button size="sm" onClick={handleVerify} disabled={isVerifying} className="bg-blue-600 hover:bg-blue-700">
-                {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Network Status</Label>
+            <div className="flex gap-2">
+              <Button 
+                variant={isInNetwork ? "default" : "outline"} 
+                className="flex-1 h-10 text-xs"
+                onClick={() => setIsInNetwork(true)}
+              >
+                In-Network
+              </Button>
+              <Button 
+                variant={!isInNetwork ? "default" : "outline"} 
+                className="flex-1 h-10 text-xs"
+                onClick={() => setIsInNetwork(false)}
+              >
+                Out-of-Network
               </Button>
             </div>
           </div>
-          <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Provider Cost (Est)</Label>
-            <Input
-              type="number"
-              placeholder="0.00"
-              className={cn("bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500 font-mono", isCriticalOvercharge && "border-rose-500/50 text-rose-600")}
-              value={cost}
-              onChange={(e) => setCost(e.target.value)}
-            />
-          </div>
         </div>
-        {verifiedRate && (
-          <div className="flex items-center gap-2 p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-500 uppercase">
-            <FileCheck className="h-3 w-3" /> Compliance Verified Against Dynamic Benchmark
-          </div>
-        )}
         <div className="p-4 bg-blue-600/5 rounded-xl border border-blue-500/20 space-y-4">
           <div className="flex justify-between items-end">
             <div>
-              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Net Patient Responsibility</p>
-              <p className="text-3xl font-mono font-bold tracking-tighter">{formatCurrency(netResponsibility)}</p>
+              <p className="text-[10px] font-bold text-blue-500 uppercase">Net Patient Responsibility</p>
+              <p className="text-3xl font-mono font-bold">{formatCurrency(netResponsibility)}</p>
             </div>
             <div className="text-right">
-              <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[9px] font-mono font-bold">
-                {oopImpactPercent}% EXPOSURE
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">
+                {isInNetwork ? '20% Co-ins' : '40% Co-ins'}
               </Badge>
             </div>
           </div>
-          <Progress value={oopImpactPercent} className="h-1 bg-blue-100/50 dark:bg-blue-900/30" />
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[10px] font-medium">
+              <span className="text-muted-foreground">OOP Max Exposure Impact</span>
+              <span className="text-blue-500">{oopImpactPercent}% of remaining limit</span>
+            </div>
+            <Progress value={oopImpactPercent} className="h-1.5 bg-blue-100/50 dark:bg-blue-900/30" />
+          </div>
         </div>
-        <div className="flex gap-3 p-3 bg-muted/30 rounded-lg border text-[11px] leading-relaxed text-muted-foreground">
-          {isCriticalOvercharge ? (
-            <>
-              <AlertTriangle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-rose-600">CRITICAL VARIANCE: </span>
-                Charge is highly unaligned with fair market value standards.
-              </div>
-            </>
-          ) : (
-            <>
-              <Fingerprint className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-foreground uppercase tracking-tight">Intelligence Forecast: </span>
-                {estimate > 0 ? `Cost is verified within regional standards.` : "Awaiting CPT verification."}
-              </div>
-            </>
-          )}
+        <div className="flex gap-3 p-3 bg-muted/30 rounded-lg border text-[11px] leading-relaxed italic text-muted-foreground">
+          <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
+          <div>
+            <span className="font-bold text-foreground">Strategic Recommendation: </span>
+            {netResponsibility > 500 && deductibleRemaining > 0 
+              ? "Consider deferring elective care until Q4 if you anticipate hitting your deductible with other claims."
+              : "Calculated liability is within optimal threshold. Ensure VOB is initiated before appointment."}
+          </div>
         </div>
       </CardContent>
     </Card>

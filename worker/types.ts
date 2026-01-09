@@ -38,6 +38,21 @@ export interface InsuranceState {
   deductibleUsed: number;
   oopMax: number;
   oopUsed: number;
+  planType?: 'PPO' | 'HMO' | 'HDHP' | 'EPO';
+  networkStatus?: 'Preferred' | 'In-Network' | 'Out-of-Network';
+}
+export interface AuditEntry {
+  id: string;
+  timestamp: number;
+  event: string;
+  detail: string;
+  severity: 'info' | 'warning' | 'critical';
+}
+export interface ForensicOutput {
+  liability_calc: number;
+  confidence_score: number;
+  code_validation: boolean;
+  strategic_disclaimer: string;
 }
 export interface ChatState {
   messages: Message[];
@@ -48,6 +63,8 @@ export interface ChatState {
   insuranceState?: InsuranceState;
   documents: InsuranceDocument[];
   activeDocumentId?: string;
+  auditLogs?: AuditEntry[];
+  lastContextSync?: number;
 }
 export interface SessionInfo {
   id: string;

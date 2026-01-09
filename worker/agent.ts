@@ -1,6 +1,6 @@
 import { Agent } from 'agents';
 import type { Env } from './core-utils';
-import type { ChatState, InsuranceState, InsuranceDocument } from './types';
+import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry } from './types';
 import { ChatHandler } from './chat';
 import { API_RESPONSES } from './config';
 import { createMessage, createStreamResponse, createEncoder } from './utils';
@@ -12,11 +12,15 @@ export class ChatAgent extends Agent<Env, ChatState> {
     isProcessing: false,
     model: 'google-ai-studio/gemini-1.5-flash',
     documents: [],
+    auditLogs: [],
+    lastContextSync: Date.now(),
     insuranceState: {
       deductibleTotal: 3000,
       deductibleUsed: 1350,
       oopMax: 6500,
-      oopUsed: 2100
+      oopUsed: 2100,
+      planType: 'PPO',
+      networkStatus: 'In-Network'
     }
   };
   async onStart(): Promise<void> {
@@ -36,6 +40,9 @@ export class ChatAgent extends Agent<Env, ChatState> {
       if (method === 'POST' && url.pathname === '/chat') {
         return this.handleChatMessage(await request.json());
       }
+      if (method === 'POST' && url.pathname === '/context') {
+        return this.handleContextSync(await request.json());
+      }
       if (method === 'POST' && url.pathname === '/documents') {
         return this.handleDocumentUpload(await request.json());
       }
@@ -45,6 +52,9 @@ export class ChatAgent extends Agent<Env, ChatState> {
       }
       if (method === 'POST' && url.pathname === '/insurance') {
         return this.handleInsuranceUpdate(await request.json());
+      }
+      if (method === 'GET' && url.pathname === '/audit') {
+        return Response.json({ success: true, data: this.state.auditLogs || [] });
       }
       if (method === 'DELETE' && url.pathname === '/clear') {
         this.setState({ ...this.state, messages: [] });
@@ -56,6 +66,36 @@ export class ChatAgent extends Agent<Env, ChatState> {
       return Response.json({ success: false, error: API_RESPONSES.INTERNAL_ERROR }, { status: 500 });
     }
   }
+  private scrubPII(content: string): string {
+    return content
+      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN-REDACTED]")
+      .replace(/\b\d{10}\b/g, "[PH-REDACTED]")
+      .replace(/\b[\w.-]+@[\w.-]+\.\w{2,4}\b/g, "[EMAIL-REDACTED]")
+      .replace(/\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g, "[DOB-REDACTED]");
+  }
+  private async logAuditEvent(event: string, detail: string, severity: 'info' | 'warning' | 'critical' = 'info'): Promise<void> {
+    const entry: AuditEntry = {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      event,
+      detail,
+      severity
+    };
+    const auditLogs = [entry, ...(this.state.auditLogs || [])].slice(0, 50);
+    this.setState({ ...this.state, auditLogs });
+    await this.ctx.storage.put(`audit_${entry.id}`, entry);
+  }
+  private async handleContextSync(body: { insuranceState?: Partial<InsuranceState>; documents?: InsuranceDocument[] }): Promise<Response> {
+    const newState = {
+      ...this.state,
+      lastContextSync: Date.now(),
+      insuranceState: body.insuranceState ? { ...this.state.insuranceState, ...body.insuranceState } : this.state.insuranceState,
+      documents: body.documents || this.state.documents
+    } as ChatState;
+    this.setState(newState);
+    await this.logAuditEvent("Context Sync", "External financial state and document registry updated.", "info");
+    return Response.json({ success: true, data: this.state });
+  }
   private async handleChatMessage(body: { message: string; model?: string; stream?: boolean }): Promise<Response> {
     const { message, model, stream } = body;
     if (!message?.trim()) return Response.json({ success: false, error: API_RESPONSES.MISSING_MESSAGE }, { status: 400 });
@@ -66,41 +106,22 @@ export class ChatAgent extends Agent<Env, ChatState> {
     const userMessage = createMessage('user', message.trim());
     this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
     try {
-      if (stream) {
-        const { readable, writable } = new TransformStream();
-        const writer = writable.getWriter();
-        const encoder = createEncoder();
-        (async () => {
-          try {
-            const response = await this.chatHandler!.processMessage(
-              message,
-              this.state.messages,
-              this.state.documents,
-              this.state.insuranceState,
-              (chunk) => {
-                writer.write(encoder.encode(chunk));
-              }
-            );
-            const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
-            this.setState({
-              ...this.state,
-              messages: [...this.state.messages, assistantMessage],
-              isProcessing: false
-            });
-          } catch (e) {
-            console.error('Streaming error:', e);
-          } finally {
-            writer.close();
-          }
-        })();
-        return createStreamResponse(readable);
-      }
       const response = await this.chatHandler!.processMessage(
         message,
         this.state.messages,
         this.state.documents,
         this.state.insuranceState
       );
+      // Deterministic check for liability
+      if (this.state.insuranceState && response.content.includes('$')) {
+        const costMatch = response.content.match(/\$\d+(,\d+)?(\.\d+)?/);
+        if (costMatch) {
+          const rawVal = parseFloat(costMatch[0].replace(/[$,]/g, ''));
+          if (rawVal > (this.state.insuranceState.oopMax - this.state.insuranceState.oopUsed)) {
+            await this.logAuditEvent("Liability Flag", "AI suggested liability exceeds remaining OOP Max. Review suggested.", "warning");
+          }
+        }
+      }
       const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
       this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
       return Response.json({ success: true, data: this.state });
@@ -109,9 +130,11 @@ export class ChatAgent extends Agent<Env, ChatState> {
       return Response.json({ success: false, error: API_RESPONSES.PROCESSING_ERROR }, { status: 500 });
     }
   }
-  private handleDocumentUpload(doc: Omit<InsuranceDocument, 'uploadDate' | 'status'>): Response {
+  private async handleDocumentUpload(doc: Omit<InsuranceDocument, 'uploadDate' | 'status'>): Promise<Response> {
+    const scrubbedContent = this.scrubPII(doc.content);
     const newDoc: InsuranceDocument = {
       ...doc,
+      content: scrubbedContent,
       uploadDate: Date.now(),
       status: 'active'
     };
@@ -121,27 +144,24 @@ export class ChatAgent extends Agent<Env, ChatState> {
       documents: updatedDocs,
       activeDocumentId: newDoc.id
     });
+    await this.logAuditEvent("Document Registered", `New ${doc.type} added with PII Scrubbing active.`, "info");
     return Response.json({ success: true, data: this.state });
   }
-  private handleDocumentDelete(docId: string): Response {
+  private async handleDocumentDelete(docId: string): Promise<Response> {
     const updatedDocs = (this.state.documents || []).filter(d => d.id !== docId);
     this.setState({
       ...this.state,
       documents: updatedDocs,
       activeDocumentId: this.state.activeDocumentId === docId ? undefined : this.state.activeDocumentId
     });
+    await this.logAuditEvent("Document Removed", `Record ${docId} purged from session context.`, "info");
     return Response.json({ success: true, data: this.state });
   }
-  private handleInsuranceUpdate(body: Partial<InsuranceState>): Response {
+  private async handleInsuranceUpdate(body: Partial<InsuranceState>): Promise<Response> {
     if (!this.state.insuranceState) return Response.json({ success: false }, { status: 400 });
-    const newState: InsuranceState = {
-      ...this.state.insuranceState,
-      ...body
-    };
-    this.setState({
-      ...this.state,
-      insuranceState: newState
-    });
+    const newState: InsuranceState = { ...this.state.insuranceState, ...body };
+    this.setState({ ...this.state, insuranceState: newState });
+    await this.logAuditEvent("Plan Update", "YTD financial metrics manually adjusted.", "info");
     return Response.json({ success: true, data: this.state });
   }
 }

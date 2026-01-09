@@ -4,13 +4,14 @@ import { DashboardMetrics } from '@/components/dashboard-metrics';
 import { ChatInterface } from '@/components/chat-interface';
 import { DocumentVault } from '@/components/document-vault';
 import { VobChecklist } from '@/components/vob-checklist';
+import { ShopCareEstimator } from '@/components/shop-care-estimator';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShieldAlert, FileText, Activity, Code2, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, FileText, Activity, Code2, AlertTriangle, History, ShieldCheck } from 'lucide-react';
 import { chatService } from '@/lib/chat';
 import { useAppStore } from '@/lib/store';
-import type { InsuranceDocument, InsuranceState } from '../../worker/types';
+import type { InsuranceDocument, InsuranceState, AuditEntry } from '../../worker/types';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
@@ -23,12 +24,16 @@ export function HomePage() {
     oopUsed: 2100,
   });
   const [documents, setDocuments] = useState<InsuranceDocument[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [lastSync, setLastSync] = useState<number>(Date.now());
   const fetchState = async () => {
     try {
       const res = await chatService.getMessages();
       if (res.success && res.data) {
         if (res.data.insuranceState) setInsuranceData(res.data.insuranceState);
         if (res.data.documents) setDocuments(res.data.documents);
+        if (res.data.auditLogs) setAuditLogs(res.data.auditLogs);
+        if (res.data.lastContextSync) setLastSync(res.data.lastContextSync);
       }
     } catch (err) {
       console.error("Failed to fetch state:", err);
@@ -36,18 +41,23 @@ export function HomePage() {
   };
   useEffect(() => {
     fetchState();
+    const interval = setInterval(fetchState, 15000); // Polling for V2 context updates
+    return () => clearInterval(interval);
   }, []);
   return (
     <AppLayout container>
       <div className="space-y-8 animate-fade-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Legacy Health Navigator</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Legacy Health Navigator <span className="text-xs align-top font-mono text-blue-500 px-2 py-1 bg-blue-500/10 rounded">v2.0</span></h1>
             <p className="text-muted-foreground">Forensic Billing Audit & Strategic Financial Advocacy</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Audit Mode: Active</span>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">PII Scrubbing: Active</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">Last Sync: {new Date(lastSync).toLocaleTimeString()}</p>
           </div>
         </header>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -57,63 +67,60 @@ export function HomePage() {
             <TabsTrigger value="vault">Document Vault</TabsTrigger>
           </TabsList>
           <TabsContent value="dashboard" className="space-y-6">
-            <DashboardMetrics
-              deductibleTotal={insuranceData.deductibleTotal}
-              deductibleUsed={insuranceData.deductibleUsed}
-              oopMax={insuranceData.oopMax}
-              oopUsed={insuranceData.oopUsed}
-            />
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <Card className="border-blue-500/20 bg-blue-50/50 dark:bg-blue-950/10">
-                <CardHeader className="flex flex-row items-center space-x-4 pb-2">
-                  <ShieldAlert className="h-6 w-6 text-blue-500" />
-                  <CardTitle className="text-lg">Priority Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button variant="outline" className="w-full justify-start" onClick={() => setActiveTab('chat')}>
-                    <Code2 className="mr-2 h-4 w-4" /> Coding & CPT Translation
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start" onClick={() => setIsVobOpen(true)}>
-                    <Activity className="mr-2 h-4 w-4" /> Verify Pre-Service Benefit
-                  </Button>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-500" /> Audit Alerts
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4 text-sm">
-                    <div className="p-3 border rounded bg-amber-50/50 dark:bg-amber-900/10">
-                      <p className="font-semibold text-amber-700 dark:text-amber-400">Potential Unbundling</p>
-                      <p className="text-xs text-muted-foreground">Coding error detected in Recent Provider Claim.</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <DashboardMetrics
+                  deductibleTotal={insuranceData.deductibleTotal}
+                  deductibleUsed={insuranceData.deductibleUsed}
+                  oopMax={insuranceData.oopMax}
+                  oopUsed={insuranceData.oopUsed}
+                />
+                <ShopCareEstimator 
+                  deductibleRemaining={insuranceData.deductibleTotal - insuranceData.deductibleUsed}
+                  oopRemaining={insuranceData.oopMax - insuranceData.oopUsed}
+                />
+              </div>
+              <div className="space-y-6">
+                <Card className="border-l-4 border-l-blue-500">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <History className="h-4 w-4 text-blue-500" />
+                      Policy Audit Trail
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {auditLogs.slice(0, 5).map(log => (
+                        <div key={log.id} className="p-2 bg-muted/30 rounded border text-[10px] space-y-1">
+                          <div className="flex justify-between items-start">
+                            <span className="font-bold text-blue-600 uppercase">{log.event}</span>
+                            <span className="text-muted-foreground">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          <p className="text-muted-foreground line-clamp-2">{log.detail}</p>
+                        </div>
+                      ))}
+                      {auditLogs.length === 0 && <p className="text-[10px] italic text-muted-foreground text-center">No recent activity.</p>}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Document Context</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {documents.length > 0 ? (
-                    documents.slice(0, 2).map(doc => (
-                      <div key={doc.id} className="flex items-center justify-between text-xs p-2 border rounded bg-muted/30">
-                        <span className="flex items-center gap-2 truncate max-w-[150px]"><FileText className="h-3 w-3" /> {doc.title}</span>
-                        <span className="text-emerald-500 font-bold uppercase text-[9px]">Loaded</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground italic">No policy documents found.</p>
-                  )}
-                  <Button variant="ghost" className="w-full text-blue-500" onClick={() => setActiveTab('vault')}>Manage Vault</Button>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      Forensic Discrepancies
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="p-3 border rounded bg-amber-50/50 dark:bg-amber-950/20 text-xs">
+                      <p className="font-bold text-amber-700 dark:text-amber-500">Unbundling Flagged</p>
+                      <p className="text-muted-foreground mt-1">Claim 72141 uses component codes that should be bundled.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </TabsContent>
-          <TabsContent value="chat" className="min-h-[600px] border rounded-xl bg-card">
+          <TabsContent value="chat" className="min-h-[600px] border rounded-xl bg-card overflow-hidden">
             <ChatInterface activeDocuments={documents} />
           </TabsContent>
           <TabsContent value="vault">
@@ -127,7 +134,10 @@ export function HomePage() {
         />
         <footer className="pt-8 border-t text-center text-[10px] text-muted-foreground space-y-2 uppercase tracking-tight">
           <p>Legacy Navigator utilizes Forensic LLM logic. Not legal or licensed financial advice.</p>
-          <p className="font-medium text-blue-500">HIPAA-GRADE CONTEXTUAL ISOLATION ACTIVE • RATE LIMITS APPLY</p>
+          <div className="flex items-center justify-center gap-4">
+             <span className="flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-blue-500" /> HIPAA-ISO ACTIVE</span>
+             <span className="flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-blue-500" /> PII-SCRUB V2 ACTIVE</span>
+          </div>
         </footer>
       </div>
     </AppLayout>
