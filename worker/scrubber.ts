@@ -1,6 +1,7 @@
 import { ScrubResponse, ForensicRule } from './types';
+import { ComplianceLogger } from './compliance';
 export class ForensicScrubber {
-  private static SALT = "LEGACY_NAV_V2.2_INTERNAL_SALT";
+  private static SALT = "LEGACY_NAV_V2.4_IMMUTABLE_SALT_" + Date.now().toString();
   private static RULES: ForensicRule[] = [
     { pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacementLabel: 'SSN', confidenceWeight: 1.0 },
     { pattern: /\b\d{10}\b/g, replacementLabel: 'NPI', confidenceWeight: 0.9 },
@@ -11,16 +12,12 @@ export class ForensicScrubber {
     { pattern: /\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g, replacementLabel: 'DOB', confidenceWeight: 0.95 },
     { pattern: /\bMRN-?[A-Z0-9]{6,12}\b/gi, replacementLabel: 'MRN', confidenceWeight: 1.0 },
     { pattern: /\b\d{1,5}\s(?:[A-Z0-9.-]+\s){1,5}(?:STREET|ST|AVE|AVENUE|ROAD|RD|BOULEVARD|BLVD|DRIVE|DR|LANE|LN|WAY)\b/gi, replacementLabel: 'ADDRESS', confidenceWeight: 0.8 },
-    { pattern: /\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b/g, replacementLabel: 'INTERNAL_ID', confidenceWeight: 0.9 }
+    { pattern: /\bPAT-ID-[A-Z0-9]{8,12}\b/gi, replacementLabel: 'PATIENT_ID', confidenceWeight: 1.0 },
+    { pattern: /\bCLM-REF-[A-Z0-9]{8,12}\b/gi, replacementLabel: 'CLAIM_REF', confidenceWeight: 1.0 }
   ];
-  public static CORPUS = [
-    "Patient John Doe (DOB 05/12/1984) with MRN-9928341 registered at 123 Main Street, New York, NY 10001.",
-    "Claim audit for NPI 1234567890 regarding ICD-10 code E11.9 and CPT 99214.",
-    "Contact verified: j.smith@provider.com or call (555) 123-4567. SSN on file: 000-00-0000."
-  ];
-  private static async hashToken(text: string, salt: string = ForensicScrubber.SALT): Promise<string> {
+  private static async hashToken(text: string): Promise<string> {
     const encoder = new TextEncoder();
-    const keyData = encoder.encode(salt);
+    const keyData = encoder.encode(this.SALT);
     const msgData = encoder.encode(text.toLowerCase());
     const key = await crypto.subtle.importKey(
       'raw',
@@ -32,7 +29,7 @@ export class ForensicScrubber {
     const signature = await crypto.subtle.sign('HMAC', key, msgData);
     const hashArray = Array.from(new Uint8Array(signature));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return `[PSEUDO-${hashHex.substring(0, 10).toUpperCase()}]`;
+    return `[PSEUDO-${hashHex.substring(0, 12).toUpperCase()}]`;
   }
   static async process(text: string): Promise<ScrubResponse> {
     let scrubbedText = text;
@@ -53,9 +50,11 @@ export class ForensicScrubber {
         }
       }
     }
-    const averageConfidence = totalDetected > 0 
-      ? Math.min(1.0, confidenceSum / totalDetected) 
-      : 1.0;
+    const averageConfidence = totalDetected > 0 ? Math.min(1.0, confidenceSum / totalDetected) : 1.0;
+    const outcome = { scrubbedText, confidence: averageConfidence };
+    // Compliance Logging
+    const log = await ComplianceLogger.logOperation('PII_SCRUB', { text_length: text.length }, outcome);
+    console.log(`[Compliance] Scrub operation recorded: ${log.id}`);
     return {
       scrubbedText,
       tokenMap,
@@ -63,17 +62,7 @@ export class ForensicScrubber {
     };
   }
   static async runSelfTest(): Promise<ScrubResponse> {
-    const sample = this.CORPUS[Math.floor(Math.random() * this.CORPUS.length)];
-    const result = await this.process(sample);
-    const passed = Object.keys(result.tokenMap).length > 0;
-    return {
-      ...result,
-      testResults: {
-        passed,
-        timestamp: Date.now(),
-        sampleUsed: sample.substring(0, 20) + "...",
-        rulesEvaluated: this.RULES.length
-      }
-    };
+    const sample = "Patient PAT-ID-99283411 with SSN 000-00-0000 at 123 Main St.";
+    return await this.process(sample);
   }
 }

@@ -1,15 +1,13 @@
 import { Agent } from 'agents';
 import type { Env } from './core-utils';
-import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry, Cpt, BilledAmount, SystemMetrics } from './types';
+import type { ChatState, InsuranceDocument, AuditEntry, ComplianceLogEntry } from './types';
 import { ChatHandler } from './chat';
 import { API_RESPONSES } from './config';
 import { createMessage } from './utils';
-import { ForensicEngine } from './forensic';
+import { calculateFMV, auditClaim, generateDisputeToken } from './forensic';
 import { ForensicScrubber } from './scrubber';
+import { ComplianceLogger } from './compliance';
 import { executeTool } from './tools';
-const STATIC_BENCHMARKS: Record<string, number> = {
-  '99213': 92.00, '99214': 128.00, '72141': 450.00, '80053': 14.50, '45378': 750.00, '90686': 19.00
-};
 export class ChatAgent extends Agent<Env, ChatState> {
   private chatHandler?: ChatHandler;
   initialState: ChatState = {
@@ -19,6 +17,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     model: 'google-ai-studio/gemini-1.5-flash',
     documents: [],
     auditLogs: [],
+    complianceLogs: [],
     lastContextSync: Date.now(),
     benchmarks: {},
     metrics: {
@@ -38,116 +37,53 @@ export class ChatAgent extends Agent<Env, ChatState> {
   async onStart(): Promise<void> {
     this.chatHandler = new ChatHandler(this.env.CF_AI_BASE_URL, this.env.CF_AI_API_KEY, this.state.model);
   }
-  private ensureChatHandler() {
+  async onRequest(request: Request): Promise<Response> {
     if (!this.chatHandler) {
       this.chatHandler = new ChatHandler(this.env.CF_AI_BASE_URL, this.env.CF_AI_API_KEY, this.state.model);
     }
-  }
-  async onRequest(request: Request): Promise<Response> {
-    this.ensureChatHandler();
     try {
       const url = new URL(request.url);
       const method = request.method;
       if (method === 'GET' && url.pathname === '/messages') return Response.json({ success: true, data: this.state });
       if (method === 'POST' && url.pathname === '/chat') return this.handleChatMessage(await request.json());
-      if (method === 'POST' && url.pathname === '/context') return this.handleContextSync(await request.json());
       if (method === 'POST' && url.pathname === '/documents') return this.handleDocumentUpload(await request.json());
-      if (method === 'POST' && url.pathname === '/cpt-lookup') return this.handleCptLookup(await request.json());
-      if (method === 'DELETE' && url.pathname.startsWith('/documents/')) {
-        const docId = url.pathname.split('/').pop();
-        if (docId) return this.handleDocumentDelete(docId);
-      }
       return Response.json({ success: false, error: API_RESPONSES.NOT_FOUND }, { status: 404 });
     } catch (error) {
       return Response.json({ success: false, error: API_RESPONSES.INTERNAL_ERROR }, { status: 500 });
     }
   }
-  private async updateMetrics(latency: number, scrubConfidence?: number) {
-    const metrics = this.state.metrics || { worker_latency: 0, audit_count: 0, scrub_avg_confidence: 0.98 };
-    const audit_count = metrics.audit_count + 1;
-    const worker_latency = (metrics.worker_latency * (audit_count - 1) + latency) / audit_count;
-    const scrub_avg_confidence = scrubConfidence !== undefined 
-      ? (metrics.scrub_avg_confidence * (audit_count - 1) + scrubConfidence) / audit_count
-      : metrics.scrub_avg_confidence;
-    this.setState({
-      ...this.state,
-      metrics: { worker_latency, audit_count, scrub_avg_confidence }
-    });
-  }
-  private async logAuditEvent(event: string, detail: string, severity: 'info' | 'warning' | 'critical' = 'info', metadata?: any): Promise<void> {
-    const entry: AuditEntry = { id: crypto.randomUUID(), timestamp: Date.now(), event, detail, severity, metadata };
-    const currentLogs = this.state.auditLogs || [];
-    const auditLogs = [entry, ...currentLogs].slice(0, 50);
-    this.setState({ ...this.state, auditLogs, lastContextSync: Date.now() });
-  }
-  private async handleCptLookup(body: { code: string; state?: string }): Promise<Response> {
-    const start = Date.now();
-    const { code, state } = body;
-    const result = await executeTool('cpt_lookup', { code, state }) as any;
-    if (result.rate) {
-      const updatedBenchmarks = { ...this.state.benchmarks, [code]: result.rate };
-      this.setState({ ...this.state, benchmarks: updatedBenchmarks });
-      await this.logAuditEvent("Dynamic Benchmark", `Fetched FMV for CPT ${code} via Live Intelligence.`, "info", { code, rate: result.rate, source: result.source });
-    }
-    await this.updateMetrics(Date.now() - start);
-    return Response.json({ success: true, data: result });
-  }
   private async handleChatMessage(body: { message: string; model?: string }): Promise<Response> {
     const start = Date.now();
-    const { message, model } = body;
-    if (!this.chatHandler) throw new Error("ChatHandler failure.");
-    const rawInput = message?.trim() || "";
-    const cptMatch = rawInput.match(/\b\d{5}\b/);
-    if (cptMatch) {
-      const code = cptMatch[0];
-      const existing = (this.state.benchmarks || {})[code];
-      if (!existing) {
-        const lookup = await executeTool('cpt_lookup', { code }) as any;
-        if (lookup.rate) {
-          const benchmarks = { ...(this.state.benchmarks || {}), [code]: lookup.rate };
-          this.setState({ ...this.state, benchmarks });
-        }
-      }
-    }
-    const scrubRes = await ForensicScrubber.process(rawInput);
+    const { message } = body;
+    const scrubRes = await ForensicScrubber.process(message);
     const cleanInput = scrubRes.scrubbedText;
-    if (model && model !== this.state.model) {
-      this.setState({ ...this.state, model });
-      this.chatHandler.updateModel(model);
-    }
-    let bridgeMetadata: any = null;
+    // Detect Forensic Trigger (CPT + Amount)
+    const cptMatch = cleanInput.match(/\b\d{5}\b/);
     const amountMatch = cleanInput.match(/\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
     if (cptMatch && amountMatch && this.state.insuranceState) {
-      const cpt: Cpt = cptMatch[0];
-      const billed: BilledAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
-      const mergedBenchmarks = { ...STATIC_BENCHMARKS, ...(this.state.benchmarks || {}) };
-      const fmvResult = ForensicEngine.calculateFMV(cpt, billed, mergedBenchmarks);
-      if (fmvResult.confidence > 0.5) {
-        const bridgeRes = ForensicEngine.detectDiscrepancies(this.state.insuranceState, {
-          liability_calc: billed,
-          fmv_variance: fmvResult.variance,
-          confidence_score: fmvResult.confidence,
-          code_validation: true,
-          strategic_disclaimer: "Bridge validation active."
-        });
-        if (bridgeRes.hasDiscrepancy) {
-          bridgeMetadata = {
-            cpt,
-            fmv_variance: fmvResult.variance,
-            dispute_token: ForensicEngine.generateDisputeToken(fmvResult.variance, true),
-            liability_calc: billed
-          };
-          await this.logAuditEvent("Bridge Discrepancy", bridgeRes.reason || "Policy-Bill mismatch.", bridgeRes.severity, bridgeMetadata);
-        }
-      }
+      const cpt = cptMatch[0];
+      const billed = parseFloat(amountMatch[1].replace(/,/g, ''));
+      const audit = auditClaim(cpt, billed, this.state.insuranceState, this.state.benchmarks || {});
+      const log = await ComplianceLogger.logOperation('CLAIM_AUDIT', { cpt, billed }, audit, audit.risk);
+      this.setState({
+        ...this.state,
+        auditLogs: [{
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          event: "Forensic Audit",
+          detail: `CPT ${cpt} at ${billed} detected. Variance: ${audit.variance}%. Risk: ${audit.risk}.`,
+          severity: audit.risk === 'HIGH' ? 'critical' : audit.risk === 'MED' ? 'warning' : 'info',
+          metadata: audit
+        }, ...(this.state.auditLogs || [])],
+        complianceLogs: [log, ...(this.state.complianceLogs || [])]
+      });
     }
-    const userMessage = createMessage('user', cleanInput);
-    this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
+    const userMsg = createMessage('user', cleanInput);
+    this.setState({ ...this.state, messages: [...this.state.messages, userMsg], isProcessing: true });
     try {
-      const response = await this.chatHandler.processMessage(cleanInput, this.state.messages, this.state.documents, this.state.insuranceState);
-      const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
-      this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
-      await this.updateMetrics(Date.now() - start, scrubRes.confidence);
+      const response = await this.chatHandler!.processMessage(cleanInput, this.state.messages, this.state.documents, this.state.insuranceState);
+      const assistantMsg = createMessage('assistant', response.content, response.toolCalls);
+      this.setState({ ...this.state, messages: [...this.state.messages, assistantMsg], isProcessing: false });
       return Response.json({ success: true, data: this.state });
     } catch (error) {
       this.setState({ ...this.state, isProcessing: false });
@@ -156,18 +92,13 @@ export class ChatAgent extends Agent<Env, ChatState> {
   }
   private async handleDocumentUpload(doc: any): Promise<Response> {
     const scrubRes = await ForensicScrubber.process(doc.content || "");
-    const newDoc: InsuranceDocument = { ...doc, content: scrubRes.scrubbedText, uploadDate: Date.now(), status: 'active' };
-    this.setState({ ...this.state, documents: [...(this.state.documents || []), newDoc], activeDocumentId: newDoc.id, lastContextSync: Date.now() });
-    await this.logAuditEvent("Context Bridge Update", `New ${doc.type} integrated.`, "info");
-    return Response.json({ success: true, data: this.state });
-  }
-  private async handleContextSync(body: any): Promise<Response> {
-    this.setState({ ...this.state, ...body, lastContextSync: Date.now() });
-    return Response.json({ success: true, data: this.state });
-  }
-  private async handleDocumentDelete(docId: string): Promise<Response> {
-    const updatedDocs = (this.state.documents || []).filter(d => d.id !== docId);
-    this.setState({ ...this.state, documents: updatedDocs, lastContextSync: Date.now() });
+    const newDoc = { ...doc, content: scrubRes.scrubbedText, uploadDate: Date.now(), status: 'active' };
+    const log = await ComplianceLogger.logOperation('DOCUMENT_INGEST', { title: doc.title, type: doc.type }, { success: true });
+    this.setState({
+      ...this.state,
+      documents: [...(this.state.documents || []), newDoc],
+      complianceLogs: [log, ...(this.state.complianceLogs || [])]
+    });
     return Response.json({ success: true, data: this.state });
   }
 }

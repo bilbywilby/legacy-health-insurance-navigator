@@ -1,11 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { InsuranceState, InsuranceDocument, AuditEntry } from '../../worker/types';
-interface SystemMetrics {
-  avgAuditMs: number;
-  totalAudits: number;
-  lastScrubScore: number;
-}
+import type { InsuranceState, InsuranceDocument, AuditEntry, ComplianceLogEntry, SystemMetrics } from '../../worker/types';
 interface AppState {
   // Navigation
   activeTab: string;
@@ -16,6 +11,7 @@ interface AppState {
   insuranceState: InsuranceState;
   documents: InsuranceDocument[];
   auditLogs: AuditEntry[];
+  complianceLogs: ComplianceLogEntry[];
   lastSync: number;
   systemMetrics: SystemMetrics;
   // Actions
@@ -26,6 +22,7 @@ interface AppState {
   setInsuranceState: (state: InsuranceState) => void;
   setDocuments: (docs: InsuranceDocument[]) => void;
   updateSystemMetrics: (metrics: Partial<SystemMetrics>) => void;
+  setStoreState: (payload: Partial<AppState>) => void;
 }
 export const useAppStore = create<AppState>()(
   immer((set) => ({
@@ -43,11 +40,12 @@ export const useAppStore = create<AppState>()(
     },
     documents: [],
     auditLogs: [],
+    complianceLogs: [],
     lastSync: Date.now(),
     systemMetrics: {
-      avgAuditMs: 0,
-      totalAudits: 0,
-      lastScrubScore: 0.98,
+      worker_latency: 0,
+      audit_count: 0,
+      scrub_avg_confidence: 0.98,
     },
     setActiveTab: (tab) => set((state) => { state.activeTab = tab; }),
     setIsVobOpen: (open) => set((state) => { state.isVobOpen = open; }),
@@ -59,10 +57,17 @@ export const useAppStore = create<AppState>()(
       state.isAppealModalOpen = false;
       state.selectedAuditId = null;
     }),
-    setInsuranceState: (insuranceState) => set((state) => { state.insuranceState = insuranceState; }),
-    setDocuments: (documents) => set((state) => { state.documents = documents; }),
+    setInsuranceState: (insuranceState) => set((state) => { 
+      state.insuranceState = insuranceState; 
+    }),
+    setDocuments: (documents) => set((state) => { 
+      state.documents = documents; 
+    }),
     updateSystemMetrics: (metrics) => set((state) => {
       state.systemMetrics = { ...state.systemMetrics, ...metrics };
+    }),
+    setStoreState: (payload) => set((state) => {
+      Object.assign(state, payload);
     }),
   }))
 );

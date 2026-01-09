@@ -1,39 +1,26 @@
 export interface ApiResponse<T = unknown> { success: boolean; data?: T; error?: string; }
-export interface WeatherResult {
-  location: string;
-  temperature: number;
-  condition: string;
-  humidity: number;
+export type FinancialPhase = 'PRE_SERVICE' | 'POST_SERVICE' | 'DISPUTE' | 'RESOLVED';
+export enum AuditResultTag {
+  UNBUNDLED = 'UNBUNDLED',
+  OVERCHARGE = 'OVERCHARGE',
+  NSA_PROTECTED = 'NSA_PROTECTED',
+  FMV_MATCH = 'FMV_MATCH'
 }
-export interface MCPResult {
-  content: string;
-}
-export interface ErrorResult {
-  error: string;
-}
-export type Cpt = string;
-export type BilledAmount = number;
+export type RiskLevel = 'LOW' | 'MED' | 'HIGH';
 export interface BenchmarkSource {
   url?: string;
   timestamp: number;
   confidence: number;
   provider?: string;
 }
-export interface ScrubResponse {
-  scrubbedText: string;
-  tokenMap: Record<string, string>;
-  confidence: number;
-  testResults?: {
-    passed: boolean;
-    timestamp: number;
-    sampleUsed: string;
-    rulesEvaluated: number;
-  };
-}
-export interface ForensicRule {
-  pattern: RegExp;
-  replacementLabel: string;
-  confidenceWeight: number;
+export interface ComplianceLogEntry {
+  id: string;
+  timestamp: number;
+  operation: string;
+  args_hash: string;
+  outcome_hash: string;
+  risk_level: RiskLevel;
+  metadata: Record<string, unknown>;
 }
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -87,9 +74,19 @@ export interface ForensicOutput {
   dispute_token?: string | null;
   is_overcharge?: boolean;
   benchmark_source?: BenchmarkSource;
+  compliance_hash?: string;
+  risk_level?: RiskLevel;
   performance?: {
     audit_ms: number;
   };
+}
+export interface AuditState {
+  claimId: string;
+  phase: FinancialPhase;
+  tag: AuditResultTag;
+  risk: RiskLevel;
+  variance: number;
+  timestamp: number;
 }
 export interface ChatState {
   messages: Message[];
@@ -101,6 +98,7 @@ export interface ChatState {
   documents: InsuranceDocument[];
   activeDocumentId?: string;
   auditLogs?: AuditEntry[];
+  complianceLogs?: ComplianceLogEntry[];
   lastContextSync?: number;
   benchmarks?: Record<string, number>;
   metrics?: SystemMetrics;
@@ -110,13 +108,4 @@ export interface SessionInfo {
   title: string;
   createdAt: number;
   lastActive: number;
-}
-export interface Tool {
-  name: string;
-  description: string;
-  parameters: {
-    type: string;
-    properties: Record<string, unknown>;
-    required: string[];
-  };
 }
