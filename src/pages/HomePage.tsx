@@ -5,13 +5,13 @@ import { ChatInterface } from '@/components/chat-interface';
 import { DocumentVault } from '@/components/document-vault';
 import { VobChecklist } from '@/components/vob-checklist';
 import { AppealGenerator } from '@/components/appeal-generator';
+import { LiveAuditTicker } from '@/components/live-audit-ticker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ShieldCheck, History, Activity, Lock, Activity as ActivityIcon, BadgeCheck, FileCheck, Zap } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { chatService } from '@/lib/chat';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
@@ -20,11 +20,11 @@ export function HomePage() {
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
   const insuranceData = useAppStore(s => s.insuranceState);
   const documents = useAppStore(s => s.documents);
-  const auditLogs = useAppStore(s => s.auditLogs);
   const complianceLogs = useAppStore(s => s.complianceLogs);
   const lastSync = useAppStore(s => s.lastSync);
   const systemMetrics = useAppStore(s => s.systemMetrics);
   const setStoreState = useAppStore(s => s.setStoreState);
+  const pushTickerEvent = useAppStore(s => s.pushTickerEvent);
   const doSync = useCallback(async () => {
     try {
       const res = await chatService.getMessages();
@@ -35,21 +35,23 @@ export function HomePage() {
           auditLogs: res.data.auditLogs || [],
           complianceLogs: res.data.complianceLogs || [],
           lastSync: Date.now(),
-          systemMetrics: res.data.metrics || systemMetrics
+          systemMetrics: res.data.metrics || systemMetrics,
+          bridgeStatus: res.data.metrics?.bridge_status || []
         });
+        pushTickerEvent({ type: 'SYNC', label: 'CONTEXT_BRIDGE_STABLE' });
       }
     } catch (err) {
       console.error('Sync failure:', err);
     }
-  }, [insuranceData, systemMetrics, setStoreState]);
+  }, [insuranceData, systemMetrics, setStoreState, pushTickerEvent]);
   useEffect(() => {
     doSync();
     const interval = setInterval(doSync, 30000);
     return () => clearInterval(interval);
   }, [doSync]);
   return (
-    <AppLayout container contentClassName="max-w-[1400px]">
-      <div className="space-y-8 animate-fade-in">
+    <AppLayout container contentClassName="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="py-8 md:py-10 lg:py-12 space-y-8 animate-fade-in">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b pb-6">
           <div className="space-y-1">
             <h1 className="text-3xl font-black tracking-tight text-foreground uppercase">
@@ -57,7 +59,7 @@ export function HomePage() {
             </h1>
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-muted-foreground font-mono text-xs uppercase tracking-widest">
+              <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-widest">
                 Compliance Bridge Active
               </p>
             </div>
@@ -67,6 +69,7 @@ export function HomePage() {
             <p className="text-emerald-500 font-bold">SHA-256 Integrity Verified</p>
           </div>
         </header>
+        <LiveAuditTicker />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 md:w-[600px] h-12 bg-muted/30 p-1 rounded-xl">
             <TabsTrigger value="dashboard" className="rounded-lg font-bold">Command</TabsTrigger>
@@ -82,7 +85,6 @@ export function HomePage() {
                   oopMax={insuranceData.oopMax}
                   oopUsed={insuranceData.oopUsed}
                 />
-                {/* Forensic Timeline */}
                 <Card className="border-l-4 border-l-emerald-500 shadow-soft overflow-hidden">
                   <CardHeader className="bg-emerald-500/5 py-3">
                     <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2 text-emerald-700">
@@ -94,7 +96,7 @@ export function HomePage() {
                       {complianceLogs.length > 0 ? complianceLogs.slice(0, 5).map((log) => (
                         <div key={log.id} className="p-3 flex items-center justify-between bg-card hover:bg-muted/30 transition-colors">
                           <div className="flex items-center gap-3">
-                            <Badge className={cn("text-[8px] h-4", 
+                            <Badge className={cn("text-[8px] h-4",
                               log.risk_level === 'HIGH' ? 'bg-rose-500' : 'bg-emerald-500'
                             )}>{log.operation}</Badge>
                             <span className="text-muted-foreground truncate max-w-[200px]">{log.args_hash}</span>
@@ -143,7 +145,6 @@ export function HomePage() {
             <DocumentVault documents={documents} onRefresh={doSync} insuranceState={insuranceData} />
           </TabsContent>
         </Tabs>
-        {/* HUD FOOTER */}
         <footer className="pt-8 border-t">
           <div className="bg-slate-950 rounded-2xl p-6 border border-white/10 shadow-glass flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-6">
@@ -159,9 +160,12 @@ export function HomePage() {
                 <p className="text-sm font-black text-blue-400 font-mono">{(systemMetrics.scrub_avg_confidence * 100).toFixed(1)}%</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Lock className="h-3 w-3 text-slate-500" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Carter V2.4 Specification Applied</span>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <Lock className="h-3 w-3 text-slate-500" />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Carter V2.4 Specification Applied</span>
+              </div>
+              <p className="text-[9px] text-slate-600 font-medium">Note: AI requests may be limited across the platform during peak periods.</p>
             </div>
           </div>
         </footer>

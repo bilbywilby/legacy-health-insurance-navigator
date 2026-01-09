@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, MessageSquareText, FileLock2, Settings, ShieldCheck, HeartPulse, FileText, Activity, Server, Zap } from "lucide-react";
+import { LayoutDashboard, MessageSquareText, FileLock2, ShieldCheck, HeartPulse, FileText, Server, Zap, ShieldAlert } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -12,16 +12,24 @@ import {
   SidebarMenuButton,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 export function AppSidebar(): JSX.Element {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const insuranceState = useAppStore(s => s.insuranceState);
+  const bridgeStatus = useAppStore(s => s.bridgeStatus);
   const openAppeal = useAppStore(s => s.openAppealGenerator);
   const percentage = Math.round(
     (insuranceState.deductibleUsed / (insuranceState.deductibleTotal || 1)) * 100
   );
+  const getStatusColor = (status: string) => {
+    if (status === 'UP') return 'bg-emerald-500';
+    if (status === 'DEGRADED') return 'bg-amber-500';
+    return 'bg-rose-500';
+  };
   return (
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader>
@@ -60,30 +68,32 @@ export function AppSidebar(): JSX.Element {
         <SidebarGroup>
           <SidebarGroupLabel>System Health</SidebarGroupLabel>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
-                  <Server className="h-3 w-3" /> Audit Bridge
-                </div>
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
-                  <ShieldCheck className="h-3 w-3" /> PII Scrubber
-                </div>
-                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-              </div>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <div className="flex items-center justify-between px-3 py-1.5">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
-                  <Zap className="h-3 w-3" /> DO Sync
-                </div>
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              </div>
-            </SidebarMenuItem>
+            <TooltipProvider>
+              {bridgeStatus.map((service) => (
+                <SidebarMenuItem key={service.service}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-between px-3 py-1.5 cursor-help hover:bg-muted/50 rounded-lg transition-colors">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+                          {service.service === 'Audit Engine' && <Server className="h-3 w-3" />}
+                          {service.service === 'FMV Bridge' && <Zap className="h-3 w-3" />}
+                          {service.service === 'NSA Monitor' && <ShieldAlert className="h-3 w-3" />}
+                          {service.service}
+                        </div>
+                        <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", getStatusColor(service.status))} />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <div className="text-[10px] font-mono">
+                        <p className="font-bold">{service.service}</p>
+                        <p>Latency: {service.latency}ms</p>
+                        <p>Status: {service.status}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </SidebarMenuItem>
+              ))}
+            </TooltipProvider>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

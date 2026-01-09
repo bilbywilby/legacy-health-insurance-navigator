@@ -1,5 +1,7 @@
-export interface ApiResponse<T = unknown> { success: boolean; data?: T; error?: string; }
+export type ApiResponse<T = unknown> = { success: boolean; data?: T; error?: string; };
 export type FinancialPhase = 'PRE_SERVICE' | 'POST_SERVICE' | 'DISPUTE' | 'RESOLVED';
+export type Cpt = string;
+export type BilledAmount = number;
 export enum AuditResultTag {
   UNBUNDLED = 'UNBUNDLED',
   OVERCHARGE = 'OVERCHARGE',
@@ -7,6 +9,25 @@ export enum AuditResultTag {
   FMV_MATCH = 'FMV_MATCH'
 }
 export type RiskLevel = 'LOW' | 'MED' | 'HIGH';
+export interface WeatherResult {
+  location: string;
+  temperature: number;
+  condition: string;
+  humidity: number;
+}
+export interface ErrorResult {
+  error: string;
+}
+export interface ScrubResponse {
+  scrubbedText: string;
+  tokenMap: Record<string, string>;
+  confidence: number;
+}
+export interface ForensicRule {
+  pattern: RegExp;
+  replacementLabel: string;
+  confidenceWeight: number;
+}
 export interface BenchmarkSource {
   url?: string;
   timestamp: number;
@@ -58,12 +79,18 @@ export interface AuditEntry {
   event: string;
   detail: string;
   severity: 'info' | 'warning' | 'critical';
-  metadata?: Record<string, unknown>;
+  metadata?: any;
+}
+export interface BridgeStatus {
+  service: string;
+  latency: number;
+  status: 'UP' | 'DOWN' | 'DEGRADED';
 }
 export interface SystemMetrics {
   worker_latency: number;
   audit_count: number;
   scrub_avg_confidence: number;
+  bridge_status?: BridgeStatus[];
 }
 export interface ForensicOutput {
   liability_calc: number;

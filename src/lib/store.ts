@@ -1,20 +1,25 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { InsuranceState, InsuranceDocument, AuditEntry, ComplianceLogEntry, SystemMetrics } from '../../worker/types';
+import type { InsuranceState, InsuranceDocument, AuditEntry, ComplianceLogEntry, SystemMetrics, BridgeStatus } from '../../worker/types';
+interface TickerEvent {
+  id: string;
+  type: 'AUDIT' | 'COMPLIANCE' | 'SYNC';
+  label: string;
+  timestamp: number;
+}
 interface AppState {
-  // Navigation
   activeTab: string;
   isVobOpen: boolean;
   isAppealModalOpen: boolean;
   selectedAuditId: string | null;
-  // Insurance State
   insuranceState: InsuranceState;
   documents: InsuranceDocument[];
   auditLogs: AuditEntry[];
   complianceLogs: ComplianceLogEntry[];
+  bridgeStatus: BridgeStatus[];
+  liveTicker: TickerEvent[];
   lastSync: number;
   systemMetrics: SystemMetrics;
-  // Actions
   setActiveTab: (tab: string) => void;
   setIsVobOpen: (open: boolean) => void;
   openAppealGenerator: (auditId?: string) => void;
@@ -22,6 +27,7 @@ interface AppState {
   setInsuranceState: (state: InsuranceState) => void;
   setDocuments: (docs: InsuranceDocument[]) => void;
   updateSystemMetrics: (metrics: Partial<SystemMetrics>) => void;
+  pushTickerEvent: (event: Omit<TickerEvent, 'id' | 'timestamp'>) => void;
   setStoreState: (payload: Partial<AppState>) => void;
 }
 export const useAppStore = create<AppState>()(
@@ -41,6 +47,8 @@ export const useAppStore = create<AppState>()(
     documents: [],
     auditLogs: [],
     complianceLogs: [],
+    bridgeStatus: [],
+    liveTicker: [],
     lastSync: Date.now(),
     systemMetrics: {
       worker_latency: 0,
@@ -57,14 +65,18 @@ export const useAppStore = create<AppState>()(
       state.isAppealModalOpen = false;
       state.selectedAuditId = null;
     }),
-    setInsuranceState: (insuranceState) => set((state) => { 
-      state.insuranceState = insuranceState; 
+    setInsuranceState: (insuranceState) => set((state) => {
+      state.insuranceState = insuranceState;
     }),
-    setDocuments: (documents) => set((state) => { 
-      state.documents = documents; 
+    setDocuments: (documents) => set((state) => {
+      state.documents = documents;
     }),
     updateSystemMetrics: (metrics) => set((state) => {
       state.systemMetrics = { ...state.systemMetrics, ...metrics };
+    }),
+    pushTickerEvent: (event) => set((state) => {
+      const newEvent = { ...event, id: crypto.randomUUID(), timestamp: Date.now() };
+      state.liveTicker = [newEvent, ...state.liveTicker].slice(0, 15);
     }),
     setStoreState: (payload) => set((state) => {
       Object.assign(state, payload);

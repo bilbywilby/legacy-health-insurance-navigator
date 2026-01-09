@@ -7,14 +7,13 @@ export function LiveAuditTicker() {
   if (liveTicker.length === 0) return null;
   return (
     <div className="w-full bg-slate-950 border-y border-white/5 py-2 overflow-hidden relative group">
-      {/* Tailwind animate-marquee is defined in tailwind.config.js keyframes/animation */}
       <div className="flex animate-marquee whitespace-nowrap gap-12 items-center hover:[animation-play-state:paused]">
         {[...liveTicker, ...liveTicker].map((event, idx) => (
           <div key={`${event.id}-${idx}`} className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-tighter">
             <span className="text-slate-500">{new Date(event.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
             <div className={cn(
               "flex items-center gap-1 px-1.5 py-0.5 rounded",
-              event.type === 'AUDIT' ? "bg-blue-500/10 text-blue-400" :
+              event.type === 'AUDIT' ? "bg-blue-500/10 text-blue-400" : 
               event.type === 'COMPLIANCE' ? "bg-emerald-500/10 text-emerald-400" :
               "bg-slate-800 text-slate-400"
             )}>

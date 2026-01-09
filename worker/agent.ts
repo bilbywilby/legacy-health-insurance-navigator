@@ -7,7 +7,6 @@ import { createMessage } from './utils';
 import { calculateFMV, auditClaim, generateDisputeToken } from './forensic';
 import { ForensicScrubber } from './scrubber';
 import { ComplianceLogger } from './compliance';
-import { executeTool } from './tools';
 export class ChatAgent extends Agent<Env, ChatState> {
   private chatHandler?: ChatHandler;
   initialState: ChatState = {
@@ -23,7 +22,12 @@ export class ChatAgent extends Agent<Env, ChatState> {
     metrics: {
       worker_latency: 0,
       audit_count: 0,
-      scrub_avg_confidence: 0.98
+      scrub_avg_confidence: 0.98,
+      bridge_status: [
+        { service: 'Audit Engine', latency: 42, status: 'UP' },
+        { service: 'FMV Bridge', latency: 124, status: 'UP' },
+        { service: 'NSA Monitor', latency: 12, status: 'UP' }
+      ]
     },
     insuranceState: {
       deductibleTotal: 3000,
@@ -53,11 +57,9 @@ export class ChatAgent extends Agent<Env, ChatState> {
     }
   }
   private async handleChatMessage(body: { message: string; model?: string }): Promise<Response> {
-    const start = Date.now();
     const { message } = body;
     const scrubRes = await ForensicScrubber.process(message);
     const cleanInput = scrubRes.scrubbedText;
-    // Detect Forensic Trigger (CPT + Amount)
     const cptMatch = cleanInput.match(/\b\d{5}\b/);
     const amountMatch = cleanInput.match(/\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
     if (cptMatch && amountMatch && this.state.insuranceState) {
@@ -65,17 +67,22 @@ export class ChatAgent extends Agent<Env, ChatState> {
       const billed = parseFloat(amountMatch[1].replace(/,/g, ''));
       const audit = auditClaim(cpt, billed, this.state.insuranceState, this.state.benchmarks || {});
       const log = await ComplianceLogger.logOperation('CLAIM_AUDIT', { cpt, billed }, audit, audit.risk);
+      const newAuditEntry: AuditEntry = {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        event: "Forensic Audit",
+        detail: `CPT ${cpt} at $${billed} detected. Variance: ${audit.variance}%. Risk: ${audit.risk}.`,
+        severity: audit.risk === 'HIGH' ? 'critical' : audit.risk === 'MED' ? 'warning' : 'info',
+        metadata: audit
+      };
       this.setState({
         ...this.state,
-        auditLogs: [{
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          event: "Forensic Audit",
-          detail: `CPT ${cpt} at ${billed} detected. Variance: ${audit.variance}%. Risk: ${audit.risk}.`,
-          severity: audit.risk === 'HIGH' ? 'critical' : audit.risk === 'MED' ? 'warning' : 'info',
-          metadata: audit
-        }, ...(this.state.auditLogs || [])],
-        complianceLogs: [log, ...(this.state.complianceLogs || [])]
+        auditLogs: [newAuditEntry, ...(this.state.auditLogs || [])],
+        complianceLogs: [log, ...(this.state.complianceLogs || [])],
+        metrics: {
+          ...this.state.metrics!,
+          audit_count: (this.state.metrics?.audit_count || 0) + 1
+        }
       });
     }
     const userMsg = createMessage('user', cleanInput);
@@ -90,9 +97,16 @@ export class ChatAgent extends Agent<Env, ChatState> {
       return Response.json({ success: false, error: API_RESPONSES.PROCESSING_ERROR }, { status: 500 });
     }
   }
-  private async handleDocumentUpload(doc: any): Promise<Response> {
+  private async handleDocumentUpload(doc: { title: string; type: string; content: string }): Promise<Response> {
     const scrubRes = await ForensicScrubber.process(doc.content || "");
-    const newDoc = { ...doc, content: scrubRes.scrubbedText, uploadDate: Date.now(), status: 'active' };
+    const newDoc: InsuranceDocument = { 
+      id: crypto.randomUUID(),
+      title: doc.title,
+      type: doc.type as any,
+      content: scrubRes.scrubbedText, 
+      uploadDate: Date.now(), 
+      status: 'active' 
+    };
     const log = await ComplianceLogger.logOperation('DOCUMENT_INGEST', { title: doc.title, type: doc.type }, { success: true });
     this.setState({
       ...this.state,
