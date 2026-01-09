@@ -6,24 +6,45 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Calculator, ShieldAlert, TrendingUp, Info, Printer, Sparkles, AlertTriangle, Fingerprint } from 'lucide-react';
+import { Calculator, ShieldAlert, Sparkles, AlertTriangle, Fingerprint, Loader2, Search } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import { chatService } from '@/lib/chat';
 import { toast } from 'sonner';
 interface EstimatorProps {
   deductibleRemaining: number;
   oopRemaining: number;
-  onEstimateChange?: (val: number) => void;
 }
 export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: EstimatorProps) {
   const [cost, setCost] = useState<string>('');
+  const [cpt, setCpt] = useState<string>('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifiedRate, setVerifiedRate] = useState<number | null>(null);
   const [isInNetwork, setIsInNetwork] = useState(true);
   const [isEmergency, setIsEmergency] = useState(false);
+  const handleVerify = async () => {
+    if (!cpt || cpt.length !== 5) {
+      toast.error("Valid 5-digit CPT code required");
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      const res = await chatService.lookupCpt(cpt);
+      if (res.success && res.data?.rate) {
+        setVerifiedRate(res.data.rate);
+        setCost(res.data.rate.toString());
+        toast.success(`Dynamic FMV Locked: ${formatCurrency(res.data.rate)}`);
+      } else {
+        toast.error("Live benchmarking failed. Using fallback estimate.");
+      }
+    } catch (err) {
+      toast.error("Intelligence bridge timeout.");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
   const estimate = parseFloat(cost) || 0;
-  // FMV V2.1 Simulation Logic
-  // Assuming a baseline average of $500 for generic procedures in this view
-  const genericBaseline = 500;
-  const fmvUpperLimit = genericBaseline * 1.4; // 140% Baseline
-  const isCriticalOvercharge = estimate > fmvUpperLimit * 1.4; // 40% Over Baseline
+  const fmvUpperLimit = verifiedRate ? verifiedRate * 1.4 : 500 * 1.4;
+  const isCriticalOvercharge = estimate > fmvUpperLimit * 1.4;
   const deductibleApplied = Math.min(estimate, deductibleRemaining);
   const remainingAfterDeductible = Math.max(0, estimate - deductibleApplied);
   const coinsuranceRate = isInNetwork ? 0.2 : 0.4;
@@ -31,71 +52,45 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
   const rawTotal = deductibleApplied + coinsurance;
   const netResponsibility = Math.min(rawTotal, oopRemaining);
   const oopImpactPercent = Math.round((netResponsibility / Math.max(1, oopRemaining)) * 100);
-  const isNsaProtected = isEmergency || (!isInNetwork && estimate > 500);
-  const potentialSavings = !isInNetwork && isNsaProtected ? (estimate * 0.4) - (estimate * 0.2) : 0;
-  const handlePrint = () => {
-    toast.success("Forensic Cost Report prepared for printing");
-    window.print();
-  };
   return (
     <Card className="glass-dark border-blue-500/20 shadow-glass overflow-hidden">
-      <CardHeader className="relative overflow-hidden border-b border-white/5 pb-4">
+      <CardHeader className="border-b border-white/5 pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-blue-500">
             <Calculator className="h-5 w-5" />
-            <CardTitle className="text-lg">Shop Care Estimator</CardTitle>
+            <CardTitle className="text-lg font-bold">Shop Care Estimator V2.3</CardTitle>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={handlePrint}>
-            <Printer className="h-4 w-4" />
-          </Button>
         </div>
-        <CardDescription className="text-xs font-medium">Deterministic V2.1 Liability Modeling Engine.</CardDescription>
-        {isCriticalOvercharge && (
-          <div className="absolute right-[-20px] top-[20px] rotate-45 bg-rose-600 text-white text-[8px] font-bold px-8 py-1 shadow-md animate-pulse">
-            HIGH VARIANCE
-          </div>
-        )}
+        <CardDescription className="text-xs font-medium">Real-time CPT FMV Benchmarking Engine.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Estimated Provider Cost</Label>
-              <span className="text-[9px] font-mono text-blue-500">FMV BASE: ${fmvUpperLimit.toFixed(0)}</span>
+            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Audit CPT Code</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g. 99214"
+                className="bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500 font-mono"
+                value={cpt}
+                maxLength={5}
+                onChange={(e) => setCpt(e.target.value)}
+              />
+              <Button size="sm" onClick={handleVerify} disabled={isVerifying} className="bg-blue-600 hover:bg-blue-700">
+                {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              </Button>
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Provider Cost (Est)</Label>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
               <Input
                 type="number"
                 placeholder="0.00"
-                className={cn(
-                  "pl-7 bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500 font-mono",
-                  isCriticalOvercharge && "border-rose-500/50 text-rose-600"
-                )}
+                className={cn("pl-7 bg-muted/20 border-blue-500/10 focus-visible:ring-blue-500 font-mono", isCriticalOvercharge && "border-rose-500/50 text-rose-600")}
                 value={cost}
                 onChange={(e) => setCost(e.target.value)}
               />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Network Status</Label>
-            <div className="flex gap-1 p-1 bg-muted/20 rounded-lg border border-blue-500/10">
-              <Button
-                variant={isInNetwork ? "default" : "ghost"}
-                size="sm"
-                className={cn("flex-1 text-[10px] h-7 font-bold", isInNetwork && "bg-blue-600")}
-                onClick={() => setIsInNetwork(true)}
-              >
-                IN-NETWORK
-              </Button>
-              <Button
-                variant={!isInNetwork ? "default" : "ghost"}
-                size="sm"
-                className={cn("flex-1 text-[10px] h-7 font-bold", !isInNetwork && "bg-amber-600")}
-                onClick={() => setIsInNetwork(false)}
-              >
-                OUT-OF-NETWORK
-              </Button>
             </div>
           </div>
         </div>
@@ -119,11 +114,6 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[9px] font-mono font-bold">
                 {Math.round(coinsuranceRate * 100)}% CO-INS
               </Badge>
-              {potentialSavings > 0 && (
-                <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                  <Sparkles className="h-3 w-3" /> ROI: {formatCurrency(potentialSavings)}
-                </div>
-              )}
             </div>
           </div>
           <div className="space-y-1.5">
@@ -139,16 +129,16 @@ export function ShopCareEstimator({ deductibleRemaining, oopRemaining }: Estimat
             <>
               <AlertTriangle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-rose-600">CRITICAL OVERCHARGE DETECTED: </span>
-                This cost exceeds Fair Market Value by over 40%. A strategic dispute token (NAV-DS) is recommended before payment.
+                <span className="font-bold text-rose-600">CRITICAL VARIANCE: </span>
+                Charge is {Math.round((estimate/fmvUpperLimit - 1) * 100)}% above verified benchmark. Strategic dispute recommended.
               </div>
             </>
           ) : (
             <>
               <Fingerprint className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-foreground uppercase tracking-tight">Forensic Forecast: </span>
-                {estimate > 0 ? `Cost is within expected variance (+${Math.round((estimate/fmvUpperLimit - 1) * 100)}%). Verification complete.` : "Awaiting forensic input data."}
+                <span className="font-bold text-foreground uppercase tracking-tight">Intelligence Forecast: </span>
+                {estimate > 0 ? `Cost is verified within regional Strike Zone.` : "Awaiting CPT verification."}
               </div>
             </>
           )}

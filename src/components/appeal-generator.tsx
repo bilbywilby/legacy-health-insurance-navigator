@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -25,13 +25,13 @@ export function AppealGenerator() {
   const [hydratedText, setHydratedText] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const selectedAudit = auditLogs?.find(log => log.id === auditId);
-  const forensicData = (selectedAudit?.metadata as any) || {
+  const selectedAudit = useMemo(() => auditLogs?.find(log => log.id === auditId), [auditLogs, auditId]);
+  const forensicData = useMemo(() => (selectedAudit?.metadata as any) || {
     cpt: 'N/A',
     fmv_variance: 0,
     dispute_token: 'NAV-V2-GENERATED',
     liability_calc: 0
-  };
+  }, [selectedAudit]);
   useEffect(() => {
     if (isOpen) {
       const text = getHydratedTemplate(selectedTemplateId, {
@@ -42,7 +42,7 @@ export function AppealGenerator() {
       });
       setHydratedText(text);
     }
-  }, [isOpen, selectedTemplateId, auditId, forensicData]);
+  }, [isOpen, selectedTemplateId, forensicData]);
   const handleCopy = () => {
     navigator.clipboard.writeText(hydratedText);
     toast.success("Appeal letter copied to clipboard");
@@ -50,11 +50,9 @@ export function AppealGenerator() {
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      // Step 1: Deep PII scrub of the entire hydrated text before generation
       const scrubRes = await scrubService.scrubText(hydratedText);
       if (scrubRes.success && scrubRes.data) {
         setHydratedText(scrubRes.data.scrubbedText);
-        // Step 2: PDF generation with specific forensic metadata
         await pdfService.generateAppealPDF('appeal-preview-content', {
           title: `Forensic Audit Appeal - ${forensicData.dispute_token}`,
           subject: 'Formal Billing Dispute / NSA Protection',
@@ -65,7 +63,7 @@ export function AppealGenerator() {
       }
     } catch (err) {
       console.error('PDF Export Failed:', err);
-      toast.error("Failed to generate PDF. Check browser permissions.");
+      toast.error("Failed to generate PDF");
     } finally {
       setIsExporting(false);
     }
@@ -75,14 +73,14 @@ export function AppealGenerator() {
     const scrubRes = await scrubService.scrubText(hydratedText);
     if (scrubRes.success && scrubRes.data) {
       setHydratedText(scrubRes.data.scrubbedText);
-      toast.success("Zero-Knowledge scrub verified. Opening print dialog...");
+      toast.success("Zero-Knowledge scrub verified.");
       setTimeout(() => {
         window.print();
         setIsPrinting(false);
       }, 500);
     } else {
       setIsPrinting(false);
-      toast.error("Scrub verification failed. Printing aborted for security.");
+      toast.error("Scrub verification failed.");
     }
   };
   return (
@@ -119,14 +117,6 @@ export function AppealGenerator() {
                 </p>
               </button>
             ))}
-            {!selectedAudit && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex gap-2">
-                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                <p className="text-[9px] text-amber-700 leading-tight">
-                  No audit selected. Displaying generic forensic pattern. Select an event from the dashboard for deterministic data.
-                </p>
-              </div>
-            )}
           </div>
           <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 relative">
             {(isExporting || isPrinting) && (
@@ -147,19 +137,6 @@ export function AppealGenerator() {
             </div>
             <ScrollArea className="flex-1 p-8 md:p-12">
               <div id="appeal-preview-content" className="max-w-2xl mx-auto space-y-8 font-serif text-slate-900 dark:text-slate-100 print-only">
-                <div className="hidden print:flex items-center justify-between border-b-2 border-blue-600 pb-4 mb-8">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-8 w-8 text-blue-600" />
-                    <div className="flex flex-col">
-                      <span className="font-bold text-xl tracking-tight">LEGACY NAVIGATOR</span>
-                      <span className="text-[10px] font-black uppercase text-muted-foreground">Strategic Audit Report</span>
-                    </div>
-                  </div>
-                  <div className="text-right text-[10px] font-mono text-muted-foreground">
-                    REPORT-ID: {forensicData.dispute_token}<br />
-                    SYNC-DATE: {new Date().toISOString()}
-                  </div>
-                </div>
                 <div className="whitespace-pre-wrap leading-relaxed text-base font-sans prose prose-slate max-w-none">
                   {hydratedText}
                 </div>
@@ -168,25 +145,13 @@ export function AppealGenerator() {
           </div>
         </div>
         <DialogFooter className="p-4 border-t bg-muted/10 print-hide">
-          <div className="flex items-center gap-4 text-muted-foreground mr-auto">
-             <AlertCircle className="h-4 w-4 text-blue-500" />
-             <span className="text-[10px] font-medium italic">Scrubbing applied before export.</span>
-          </div>
           <Button variant="ghost" onClick={close} className="h-9 px-6 font-bold text-xs">Discard</Button>
           <div className="flex gap-2">
-            <Button
-              className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 font-bold text-xs uppercase"
-              onClick={handleExportPDF}
-              disabled={isExporting || isPrinting}
-            >
+            <Button className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 font-bold text-xs uppercase" onClick={handleExportPDF} disabled={isExporting || isPrinting}>
               {isExporting ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <FileDown className="h-3 w-3 mr-2" />}
               Export PDF
             </Button>
-            <Button
-              className="h-9 px-4 bg-blue-600 hover:bg-blue-700 font-bold text-xs uppercase shadow-glow"
-              onClick={handlePrint}
-              disabled={isExporting || isPrinting}
-            >
+            <Button className="h-9 px-4 bg-blue-600 hover:bg-blue-700 font-bold text-xs uppercase shadow-glow" onClick={handlePrint} disabled={isExporting || isPrinting}>
               {isPrinting ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Printer className="h-3 w-3 mr-2" />}
               Print
             </Button>

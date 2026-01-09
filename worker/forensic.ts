@@ -2,7 +2,7 @@ import { Cpt, BilledAmount, InsuranceState, ForensicOutput } from './types';
 import { STANDARD_FORENSIC_BASELINE, CRITICAL_OVERCHARGE_THRESHOLD } from './config';
 export class ForensicEngine {
   /**
-   * Calculates FMV Variance based on benchmark records.
+   * Calculates FMV Variance based on benchmark records (Static + Dynamic).
    */
   static calculateFMV(cpt: Cpt, billedAmount: BilledAmount, benchmarks: Record<string, number>): {
     variance: number;
@@ -36,7 +36,6 @@ export class ForensicEngine {
     reason?: string;
     severity: 'info' | 'warning' | 'critical';
   } {
-    // Safely handle optional fmv_variance using nullish coalescing
     const variance = bill.fmv_variance ?? 0;
     const liability = bill.liability_calc ?? 0;
     if (state.planType === 'PPO' && liability > 500 && variance > 30) {
@@ -60,14 +59,9 @@ export class ForensicEngine {
     const sortedLogs = [...validLogs].sort((a, b) => a.timestamp - b.timestamp);
     const firstDate = sortedLogs[0].timestamp;
     const lastDate = sortedLogs[sortedLogs.length - 1].timestamp;
-    // Minimum 1 day difference to prevent division by zero
     const daysDiff = Math.max(1, (lastDate - firstDate) / (1000 * 60 * 60 * 24));
-    const totalSpent = sortedLogs.reduce((acc, log) => {
-      const amount = log.metadata?.liability_calc ?? 0;
-      return acc + amount;
-    }, 0);
+    const totalSpent = sortedLogs.reduce((acc, log) => acc + (log.metadata?.liability_calc ?? 0), 0);
     const dailyBurn = totalSpent / daysDiff;
-    // If no burn rate, project to end of year
     if (dailyBurn <= 0) return { dailyBurn: 0, projectedOopDate: endOfYear };
     const remainingOop = Math.max(0, oopMax - totalSpent);
     const daysToOop = remainingOop / dailyBurn;
@@ -78,9 +72,10 @@ export class ForensicEngine {
    * Generates a unique Strategic Dispute Token.
    */
   static generateDisputeToken(variance: number, bridgeFlag: boolean = false): string | null {
-    // Consistent threshold handling (>=)
     if (variance < 10 && !bridgeFlag) return null;
     let prefix = bridgeFlag ? 'BRIDGE-DS' : (variance >= CRITICAL_OVERCHARGE_THRESHOLD ? 'NAV-DS-CRIT' : 'NAV-DS-STD');
+    // Phase 13: Mark as Dynamic if over 20%
+    if (variance > 20) prefix = `DYN-${prefix}`;
     const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `${prefix}-${randomSuffix}`;
   }

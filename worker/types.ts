@@ -13,6 +13,12 @@ export interface ErrorResult {
 }
 export type Cpt = string;
 export type BilledAmount = number;
+export interface BenchmarkSource {
+  url?: string;
+  timestamp: number;
+  confidence: number;
+  provider?: string;
+}
 export interface ScrubResponse {
   scrubbedText: string;
   tokenMap: Record<string, string>;
@@ -75,6 +81,7 @@ export interface ForensicOutput {
   fmv_variance?: number;
   dispute_token?: string | null;
   is_overcharge?: boolean;
+  benchmark_source?: BenchmarkSource;
 }
 export interface ChatState {
   messages: Message[];
@@ -87,6 +94,7 @@ export interface ChatState {
   activeDocumentId?: string;
   auditLogs?: AuditEntry[];
   lastContextSync?: number;
+  benchmarks?: Record<string, number>;
 }
 export interface SessionInfo {
   id: string;

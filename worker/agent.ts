@@ -1,12 +1,13 @@
 import { Agent } from 'agents';
 import type { Env } from './core-utils';
-import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry, Cpt, BilledAmount, ForensicOutput } from './types';
+import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry, Cpt, BilledAmount } from './types';
 import { ChatHandler } from './chat';
 import { API_RESPONSES } from './config';
 import { createMessage } from './utils';
 import { ForensicEngine } from './forensic';
 import { ForensicScrubber } from './scrubber';
-const CPT_BENCHMARKS: Record<string, number> = {
+import { executeTool } from './tools';
+const STATIC_BENCHMARKS: Record<string, number> = {
   '99213': 92.00, '99214': 128.00, '72141': 450.00, '80053': 14.50, '45378': 750.00, '90686': 19.00
 };
 export class ChatAgent extends Agent<Env, ChatState> {
@@ -19,6 +20,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     documents: [],
     auditLogs: [],
     lastContextSync: Date.now(),
+    benchmarks: {},
     insuranceState: {
       deductibleTotal: 3000,
       deductibleUsed: 1350,
@@ -39,6 +41,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
       if (method === 'POST' && url.pathname === '/chat') return this.handleChatMessage(await request.json());
       if (method === 'POST' && url.pathname === '/context') return this.handleContextSync(await request.json());
       if (method === 'POST' && url.pathname === '/documents') return this.handleDocumentUpload(await request.json());
+      if (method === 'POST' && url.pathname === '/cpt-lookup') return this.handleCptLookup(await request.json());
       if (method === 'DELETE' && url.pathname.startsWith('/documents/')) {
         const docId = url.pathname.split('/').pop();
         if (docId) return this.handleDocumentDelete(docId);
@@ -54,25 +57,46 @@ export class ChatAgent extends Agent<Env, ChatState> {
     const auditLogs = [entry, ...currentLogs].slice(0, 50);
     this.setState({ ...this.state, auditLogs, lastContextSync: Date.now() });
   }
+  private async handleCptLookup(body: { code: string; state?: string }): Promise<Response> {
+    const { code, state } = body;
+    const result = await executeTool('cpt_lookup', { code, state }) as any;
+    if (result.rate) {
+      const updatedBenchmarks = { ...this.state.benchmarks, [code]: result.rate };
+      this.setState({ ...this.state, benchmarks: updatedBenchmarks });
+      await this.logAuditEvent("Dynamic Benchmark", `Fetched FMV for CPT ${code} via Live Intelligence.`, "info", { code, rate: result.rate, source: result.source });
+    }
+    return Response.json({ success: true, data: result });
+  }
   private async handleChatMessage(body: { message: string; model?: string }): Promise<Response> {
     const { message, model } = body;
-    if (!this.chatHandler) {
-      throw new Error("ChatHandler not initialized. Lifecycle failure.");
+    if (!this.chatHandler) throw new Error("ChatHandler failure.");
+    const rawInput = message?.trim() || "";
+    // Phase 13: Auto-CPT Detection & Dynamic Lookup
+    const cptMatch = rawInput.match(/\b\d{5}\b/);
+    if (cptMatch) {
+      const code = cptMatch[0];
+      const existing = (this.state.benchmarks || {})[code];
+      if (!existing) {
+        const lookup = await executeTool('cpt_lookup', { code }) as any;
+        if (lookup.rate) {
+          const benchmarks = { ...(this.state.benchmarks || {}), [code]: lookup.rate };
+          this.setState({ ...this.state, benchmarks });
+        }
+      }
     }
-    const scrubRes = await ForensicScrubber.process(message?.trim() || "");
+    const scrubRes = await ForensicScrubber.process(rawInput);
     const cleanInput = scrubRes.scrubbedText;
     if (model && model !== this.state.model) {
       this.setState({ ...this.state, model });
       this.chatHandler.updateModel(model);
     }
     let bridgeMetadata: any = null;
-    const cptMatch = message.match(/\b\d{5}\b/);
     const amountMatch = cleanInput.match(/\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
     if (cptMatch && amountMatch && this.state.insuranceState) {
       const cpt: Cpt = cptMatch[0];
       const billed: BilledAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
-      const fmvResult = ForensicEngine.calculateFMV(cpt, billed, CPT_BENCHMARKS);
-      // Only process bridge if we have high-confidence benchmarks
+      const mergedBenchmarks = { ...STATIC_BENCHMARKS, ...(this.state.benchmarks || {}) };
+      const fmvResult = ForensicEngine.calculateFMV(cpt, billed, mergedBenchmarks);
       if (fmvResult.confidence > 0.5) {
         const bridgeRes = ForensicEngine.detectDiscrepancies(this.state.insuranceState, {
           liability_calc: billed,
@@ -88,19 +112,14 @@ export class ChatAgent extends Agent<Env, ChatState> {
             dispute_token: ForensicEngine.generateDisputeToken(fmvResult.variance, true),
             liability_calc: billed
           };
-          await this.logAuditEvent("Bridge Discrepancy", bridgeRes.reason || "Policy-Bill mismatch detected.", bridgeRes.severity, bridgeMetadata);
+          await this.logAuditEvent("Bridge Discrepancy", bridgeRes.reason || "Policy-Bill mismatch.", bridgeRes.severity, bridgeMetadata);
         }
       }
     }
     const userMessage = createMessage('user', cleanInput);
     this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
     try {
-      const response = await this.chatHandler.processMessage(
-        cleanInput,
-        this.state.messages,
-        this.state.documents,
-        this.state.insuranceState
-      );
+      const response = await this.chatHandler.processMessage(cleanInput, this.state.messages, this.state.documents, this.state.insuranceState);
       const assistantMessage = createMessage('assistant', response.content, response.toolCalls);
       this.setState({ ...this.state, messages: [...this.state.messages, assistantMessage], isProcessing: false });
       return Response.json({ success: true, data: this.state });
@@ -112,13 +131,8 @@ export class ChatAgent extends Agent<Env, ChatState> {
   private async handleDocumentUpload(doc: any): Promise<Response> {
     const scrubRes = await ForensicScrubber.process(doc.content || "");
     const newDoc: InsuranceDocument = { ...doc, content: scrubRes.scrubbedText, uploadDate: Date.now(), status: 'active' };
-    this.setState({ 
-      ...this.state, 
-      documents: [...(this.state.documents || []), newDoc], 
-      activeDocumentId: newDoc.id,
-      lastContextSync: Date.now() 
-    });
-    await this.logAuditEvent("Context Bridge Update", `New ${doc.type} integrated for cross-validation.`, "info");
+    this.setState({ ...this.state, documents: [...(this.state.documents || []), newDoc], activeDocumentId: newDoc.id, lastContextSync: Date.now() });
+    await this.logAuditEvent("Context Bridge Update", `New ${doc.type} integrated.`, "info");
     return Response.json({ success: true, data: this.state });
   }
   private async handleContextSync(body: any): Promise<Response> {

@@ -1,14 +1,10 @@
-import type { Message, ChatState, SessionInfo, InsuranceDocument, InsuranceState, AuditEntry, ForensicOutput, Cpt } from '../../worker/types';
+import type { Message, ChatState, InsuranceDocument, InsuranceState, AuditEntry, ForensicOutput, Cpt } from '../../worker/types';
+import { useAppStore } from './store';
 export interface ChatResponse {
   success: boolean;
-  data?: ChatState & { forensicData?: ForensicOutput };
+  data?: ChatState & { forensicData?: ForensicOutput; rate?: number; source?: string };
   error?: string;
 }
-export const MODELS = [
-  { id: 'google-ai-studio/gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-  { id: 'google-ai-studio/gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-  { id: 'google-ai-studio/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash' },
-];
 const SESSION_KEY = 'legacy_session_id';
 class ChatService {
   private sessionId: string;
@@ -19,8 +15,23 @@ class ChatService {
     if (!saved) localStorage.setItem(SESSION_KEY, this.sessionId);
     this.baseUrl = `/api/chat/${this.sessionId}`;
   }
-  normalizeCpt(cpt: string): Cpt {
-    return cpt.replace(/[^0-9]/g, '').trim();
+  async lookupCpt(code: string, state?: string): Promise<ChatResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/cpt-lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, state }),
+      });
+      const data = await response.json();
+      if (data.success && data.data?.rate) {
+        const currentBenchmarks = useAppStore.getState().insuranceState.deductibleTotal; // Dummy read for reactivity if needed
+        // We can't update state directly here comfortably without violating laws, 
+        // but the agent stores the result in its state which we sync.
+      }
+      return data;
+    } catch (error) {
+      return { success: false, error: 'CPT Lookup failed' };
+    }
   }
   async syncContext(state: Partial<InsuranceState>, documents?: InsuranceDocument[]): Promise<ChatResponse> {
     try {
@@ -31,57 +42,34 @@ class ChatService {
       });
       return await response.json();
     } catch (error) {
-      console.error('Context sync error:', error);
       return { success: false, error: 'Context sync failed' };
     }
   }
-  async getAuditLogs(): Promise<{ success: boolean; data?: AuditEntry[] }> {
-    try {
-      const response = await fetch(`${this.baseUrl}/audit`);
-      return await response.json();
-    } catch (error) {
-      console.error('Audit logs fetch error:', error);
-      return { success: false };
-    }
-  }
-  async sendMessage(
-    message: string,
-    model?: string,
-    onChunk?: (chunk: string) => void
-  ): Promise<ChatResponse> {
+  async sendMessage(message: string, model?: string): Promise<ChatResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, model, stream: !!onChunk }),
+        body: JSON.stringify({ message, model }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (data.success && data.data?.messages) {
         const lastMsg = data.data.messages[data.data.messages.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant') {
+        if (lastMsg?.role === 'assistant') {
           const match = lastMsg.content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/m);
           if (match) {
             try {
-              let cleanedJson = match[1].trim();
-              // Strip potential markdown code fences inside the tag
-              cleanedJson = cleanedJson.replace(/^```json\s*/, '').replace(/```$/, '').trim();
-              const parsed = JSON.parse(cleanedJson);
-              data.data.forensicData = {
-                ...parsed,
-                fmv_variance: parsed.fmv_variance ?? 0,
-                dispute_token: parsed.dispute_token ?? null,
-                is_overcharge: parsed.is_overcharge ?? (parsed.fmv_variance > 10)
-              };
+              let cleanedJson = match[1].trim().replace(/^```json\s*/, '').replace(/```$/, '').trim();
+              data.data.forensicData = JSON.parse(cleanedJson);
             } catch (e) {
-              console.warn("Forensic JSON Parsing Failed:", e, match[1]);
+              console.warn("Forensic JSON Parsing Failed", e);
             }
           }
         }
       }
       return data;
     } catch (error) {
-      console.error('Failed to send message:', error);
       return { success: false, error: 'Failed to send message' };
     }
   }
@@ -108,30 +96,11 @@ class ChatService {
   async getMessages(): Promise<ChatResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/messages`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
       return { success: false, error: 'Failed to load messages' };
     }
   }
-  async clearMessages(): Promise<ChatResponse> {
-    try {
-      const response = await fetch(`${this.baseUrl}/clear`, { method: 'DELETE' });
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Failed to clear messages' };
-    }
-  }
   getSessionId(): string { return this.sessionId; }
-  newSession(): void {
-    this.sessionId = crypto.randomUUID();
-    localStorage.setItem(SESSION_KEY, this.sessionId);
-    this.baseUrl = `/api/chat/${this.sessionId}`;
-  }
-  switchSession(sessionId: string): void {
-    this.sessionId = sessionId;
-    localStorage.setItem(SESSION_KEY, this.sessionId);
-    this.baseUrl = `/api/chat/${sessionId}`;
-  }
 }
 export const chatService = new ChatService();
