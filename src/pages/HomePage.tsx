@@ -7,7 +7,7 @@ import { VobChecklist } from '@/components/vob-checklist';
 import { AppealGenerator } from '@/components/appeal-generator';
 import { LiveAuditTicker } from '@/components/live-audit-ticker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShieldCheck, History, Activity, Lock, Activity as ActivityIcon, BadgeCheck, FileCheck, Zap } from 'lucide-react';
+import { History, Activity as ActivityIcon, BadgeCheck, FileCheck, Lock } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,24 +29,28 @@ export function HomePage() {
     try {
       const res = await chatService.getMessages();
       if (res.success && res.data) {
+        const currentStore = useAppStore.getState();
+        const hasMessages = res.data.messages && res.data.messages.length > 0;
         setStoreState({
-          insuranceState: res.data.insuranceState || insuranceData,
+          insuranceState: res.data.insuranceState || currentStore.insuranceState,
           documents: res.data.documents || [],
           auditLogs: res.data.auditLogs || [],
           complianceLogs: res.data.complianceLogs || [],
           lastSync: Date.now(),
-          systemMetrics: res.data.metrics || systemMetrics,
-          bridgeStatus: res.data.metrics?.bridge_status || []
+          systemMetrics: res.data.metrics || currentStore.systemMetrics,
+          bridgeStatus: res.data.metrics?.bridge_status || currentStore.bridgeStatus
         });
-        pushTickerEvent({ type: 'SYNC', label: 'CONTEXT_BRIDGE_STABLE' });
+        if (hasMessages) {
+          pushTickerEvent({ type: 'SYNC', label: 'CONTEXT_BRIDGE_HYDRATED' });
+        }
       }
     } catch (err) {
       console.error('Sync failure:', err);
     }
-  }, [insuranceData, systemMetrics, setStoreState, pushTickerEvent]);
+  }, [setStoreState, pushTickerEvent]);
   useEffect(() => {
     doSync();
-    const interval = setInterval(doSync, 30000);
+    const interval = setInterval(doSync, 45000);
     return () => clearInterval(interval);
   }, [doSync]);
   return (

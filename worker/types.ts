@@ -22,6 +22,10 @@ export interface ScrubResponse {
   scrubbedText: string;
   tokenMap: Record<string, string>;
   confidence: number;
+  testResults?: {
+    passed: boolean;
+    details?: string;
+  };
 }
 export interface ForensicRule {
   pattern: RegExp;

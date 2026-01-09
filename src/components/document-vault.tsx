@@ -21,7 +21,7 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubInput, setScrubInput] = useState('');
   const [scrubResult, setScrubResult] = useState<{ text: string; map: Record<string, string>; conf: number } | null>(null);
-  const [testReport, setTestReport] = useState<any>(null);
+  const [testReport, setTestReport] = useState<{ passed: boolean; details?: string } | null>(null);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [newDoc, setNewDoc] = useState({
@@ -29,22 +29,20 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
     type: 'EOC' as InsuranceDocumentType,
     content: ''
   });
-
   useEffect(() => {
     const autoRun = async () => {
       const res = await scrubService.runTest();
       if (res.success && res.data) {
-        setTestReport(res.data.testResults);
-        setScrubResult({ 
-          text: res.data.scrubbedText, 
-          map: res.data.tokenMap, 
-          conf: res.data.confidence 
+        setTestReport(res.data.testResults || null);
+        setScrubResult({
+          text: res.data.scrubbedText,
+          map: res.data.tokenMap,
+          conf: res.data.confidence
         });
       }
     };
     autoRun();
   }, []);
-
   const handleAdd = async () => {
     if (!newDoc.title || !newDoc.content) {
       toast.error('Title and content are required');
@@ -101,9 +99,11 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
       toast.info("Synthetic corpus sample loaded");
     }
   };
-
   const handleTestScrub = async () => {
-    if (!scrubInput.trim()) return;
+    if (!scrubInput.trim()) {
+      setScrubResult(null);
+      return;
+    }
     setIsScrubbing(true);
     const res = await scrubService.scrubText(scrubInput);
     if (res.success && res.data) {
@@ -279,9 +279,9 @@ export function DocumentVault({ documents, onRefresh, insuranceState }: Document
                   <div className="h-1 w-1 rounded-full bg-emerald-600 animate-pulse" />
                   Context Active
                 </span>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={() => handleDelete(doc.id)}
                   disabled={isDeleting === doc.id}
