@@ -15,6 +15,7 @@ interface MetricProps {
 }
 export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopUsed, confidenceScore = 0.94 }: MetricProps) {
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
+  const openAppeal = useAppStore(s => s.openAppealGenerator);
   const dedPct = calculatePercentage(deductibleUsed, deductibleTotal);
   const oopPct = calculatePercentage(oopUsed, oopMax);
   const dedData = [
@@ -115,11 +116,16 @@ export function DashboardMetrics({ deductibleTotal, deductibleUsed, oopMax, oopU
           <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">Pre-Service Audit Pipeline</span>
-              <span className="text-[10px] text-muted-foreground uppercase">Mandatory for procedures &gt; $500</span>
+              <span className="text-[10px] text-muted-foreground uppercase">Mandatory for procedures > $500</span>
             </div>
-            <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 font-bold text-[10px]" onClick={() => setIsVobOpen(true)}>
-              <PhoneCall className="mr-2 h-3 w-3" /> Initiate VOB
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="h-8 border-blue-500/20 text-blue-600 font-bold text-[10px]" onClick={() => openAppeal()}>
+                <Sparkles className="mr-2 h-3 w-3" /> Evidence
+              </Button>
+              <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 font-bold text-[10px]" onClick={() => setIsVobOpen(true)}>
+                <PhoneCall className="mr-2 h-3 w-3" /> VOB
+              </Button>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="p-2 border rounded-lg bg-card border-emerald-500/20 flex flex-col justify-between">

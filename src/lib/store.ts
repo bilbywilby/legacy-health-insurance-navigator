@@ -5,6 +5,8 @@ interface AppState {
   // Navigation
   activeTab: string;
   isVobOpen: boolean;
+  isAppealModalOpen: boolean;
+  selectedAuditId: string | null;
   // Insurance State
   insuranceState: InsuranceState;
   documents: InsuranceDocument[];
@@ -13,12 +15,16 @@ interface AppState {
   // Actions
   setActiveTab: (tab: string) => void;
   setIsVobOpen: (open: boolean) => void;
+  openAppealGenerator: (auditId?: string) => void;
+  closeAppealGenerator: () => void;
   setInsuranceState: (state: InsuranceState) => void;
   setDocuments: (docs: InsuranceDocument[]) => void;
 }
 export const useAppStore = create<AppState>((set) => ({
   activeTab: 'dashboard',
   isVobOpen: false,
+  isAppealModalOpen: false,
+  selectedAuditId: null,
   insuranceState: {
     deductibleTotal: 3000,
     deductibleUsed: 1350,
@@ -32,6 +38,8 @@ export const useAppStore = create<AppState>((set) => ({
   lastSync: Date.now(),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setIsVobOpen: (open) => set({ isVobOpen: open }),
+  openAppealGenerator: (auditId) => set({ isAppealModalOpen: true, selectedAuditId: auditId || null }),
+  closeAppealGenerator: () => set({ isAppealModalOpen: false, selectedAuditId: null }),
   setInsuranceState: (insuranceState) => set({ insuranceState }),
   setDocuments: (documents) => set({ documents }),
 }));

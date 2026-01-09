@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, MessageSquareText, FileLock2, Settings, ShieldCheck, HeartPulse } from "lucide-react";
+import { LayoutDashboard, MessageSquareText, FileLock2, Settings, ShieldCheck, HeartPulse, FileText } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -18,6 +18,7 @@ export function AppSidebar(): JSX.Element {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const insuranceState = useAppStore(s => s.insuranceState);
+  const openAppeal = useAppStore(s => s.openAppealGenerator);
   const percentage = Math.round(
     (insuranceState.deductibleUsed / (insuranceState.deductibleTotal || 1)) * 100
   );
@@ -68,6 +69,13 @@ export function AppSidebar(): JSX.Element {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4">
+        <SidebarMenu className="mb-4">
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => openAppeal()} className="bg-blue-600/10 text-blue-600 hover:bg-blue-600 hover:text-white transition-colors">
+              <FileText className="h-4 w-4" /> <span>Generate Appeal</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <div className="space-y-3 rounded-lg bg-blue-50/50 p-3 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50">
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
             <HeartPulse className="h-3 w-3" />

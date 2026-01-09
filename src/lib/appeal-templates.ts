@@ -23,7 +23,7 @@ I am writing to formally dispute the charges associated with the aforementioned 
 A deterministic analysis of the submitted codes reveals that CPT {{CPT}} and associated secondary codes represent components of a single, comprehensive procedure. Under standard National Correct Coding Initiative (NCCI) edits, these services are considered bundled and should not be billed as fragmented line items.
 - **Identified Variance:** {{VARIANCE}}% above Fair Market Value (FMV)
 - **Forensic Token:** {{DISPUTE_TOKEN}}
-- **Liability Estimate:** {{LIABILITY}}
+- **Liability Estimate:** ${{LIABILITY}}
 ### Strategic Request
 I request a secondary review of this billing structure. Fragmentation of services to increase reimbursement is a violation of standard coding ethics. Please adjust the bill to reflect the comprehensive bundled rate for this procedure.
 Sincerely,
@@ -46,7 +46,7 @@ Pursuant to the **No Surprises Act (NSA)**, effective January 1, 2022, I am form
 The NSA prohibits providers from "balance billing" patients for emergency services or for non-emergency services provided by OON providers at In-Network facilities. My plan records indicate this facility is In-Network, thus triggering mandatory protection under **45 CFR § 149.410**.
 ### Forensic Audit Summary
 - **Procedure Code:** CPT {{CPT}}
-- **FMV Baseline:** {{LIABILITY}}
+- **FMV Baseline:** ${{LIABILITY}}
 - **Excess Variance Flagged:** {{VARIANCE}}%
 - **Strategic Token:** {{DISPUTE_TOKEN}}
 ### Demand for Compliance
@@ -69,7 +69,7 @@ I am reaching out to settle the outstanding balance for services rendered under 
 ### Deterministic Benchmarking
 A forensic review of regional Medicare-based Fair Market Value (FMV) benchmarks indicates that the billed amount represents a **{{VARIANCE}}% variance** from the national 80th percentile. 
 ### Proposal
-Under **ERISA Section 502(a)** guidelines regarding fiduciary responsibility and reasonable charge limits, I am proposing a one-time settlement of **{{LIABILITY}}**. This amount represents 140% of the Medicare allowable rate, which is widely considered the ceiling for "reasonable and customary" reimbursement.
+Under **ERISA Section 502(a)** guidelines regarding fiduciary responsibility and reasonable charge limits, I am proposing a one-time settlement of **${{LIABILITY}}**. This amount represents 140% of the Medicare allowable rate, which is widely considered the ceiling for "reasonable and customary" reimbursement.
 Please provide a written acceptance of this settlement or a revised invoice reflecting these forensic standards.
 Sincerely,
 [PATIENT NAME REDACTED]

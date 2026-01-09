@@ -187,3 +187,30 @@
     @apply text-base sm:text-lg text-muted-foreground leading-relaxed;
   }
 }
+
+@media print {
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+    color: black !important;
+    background: white !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  * {
+    border-color: #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: bold !important;
+  }
+}

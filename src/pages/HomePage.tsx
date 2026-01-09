@@ -13,16 +13,16 @@ import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { chatService } from '@/lib/chat';
+import { AppealGenerator } from '@/components/appeal-generator';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const isVobOpen = useAppStore(s => s.isVobOpen);
   const setIsVobOpen = useAppStore(s => s.setIsVobOpen);
-  const insuranceData = useAppStore(s => s.insuranceState);
-  const documents = useAppStore(s => s.documents);
+  const insuranceData = useAppStore(s => s.insuranceState);  const documents = useAppStore(s => s.documents);
   const auditLogs = useAppStore(s => s.auditLogs);
   const lastSync = useAppStore(s => s.lastSync);
-
+  const openAppeal = useAppStore(s => s.openAppealGenerator);
   const doSync = async () => {
     try {
       // useAppStore.setState({ isLoading: true }); // Store may not have isLoading yet
@@ -121,7 +121,7 @@ export function HomePage() {
                   <CardContent className="px-4">
                     <div className="space-y-4">
                       {auditLogs.slice(0, 4).map(log => (
-                        <div key={log.id} className="group p-3 hover:bg-muted/30 rounded-lg border border-transparent hover:border-border transition-all space-y-1">
+                        <div key={log.id} className="group relative p-3 hover:bg-muted/30 rounded-lg border border-transparent hover:border-border transition-all space-y-1">
                           <div className="flex justify-between items-start">
                             <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded uppercase",
                               log.severity === 'critical' ? 'bg-rose-500 text-white' :
@@ -132,6 +132,11 @@ export function HomePage() {
                             <span className="text-[9px] text-muted-foreground font-mono">{new Date(log.timestamp).toLocaleTimeString()}</span>
                           </div>
                           <p className="text-[11px] text-muted-foreground leading-tight line-clamp-2">{log.detail}</p>
+                          <button 
+                            onClick={() => openAppeal(log.id)}
+                            className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 text-white p-1 rounded hover:bg-blue-700 shadow-sm">
+                            <FileLock2 className="h-3 w-3" />
+                          </button>
                         </div>
                       ))}
                       {auditLogs.length === 0 && (
@@ -159,12 +164,19 @@ export function HomePage() {
                       <p className="text-[10px] text-muted-foreground leading-relaxed">
                         Claim used component codes for MRI Lumbar that should be bundled. Potential ROI: <span className="text-emerald-600 font-bold">$185.00</span>
                       </p>
-                      <div className="space-y-1">
+                      <div className="space-y-3">
                         <div className="flex justify-between text-[8px] font-bold">
                           <span>RESOLUTION PROGRESS</span>
                           <span>45%</span>
                         </div>
                         <Progress value={45} className="h-1 bg-amber-100 dark:bg-amber-950/20" />
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full h-7 text-[9px] font-bold border-amber-500/20 text-amber-600 hover:bg-amber-50"
+                          onClick={() => openAppeal()}>
+                          GENERATE STRATEGIC DISPUTE
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -222,6 +234,7 @@ export function HomePage() {
         onClose={() => setIsVobOpen(false)}
         insuranceInfo={{ policyId: "LEG-99238421", groupNumber: "GRP-NAV-01" }}
       />
+      <AppealGenerator />
     </AppLayout>
   );
 }
