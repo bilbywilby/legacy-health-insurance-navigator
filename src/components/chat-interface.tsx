@@ -47,56 +47,69 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
         setMessages(res.data.messages);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Chat Send Error:', err);
     } finally {
       setLoading(false);
     }
   };
   const parseMessageContent = (content: string) => {
-    const forensicMatch = content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/m);
+    // Robust forensic data regex - handles nested JSON and potential markdown wraps
+    const forensicMatch = content.match(/<forensic_data>([\s\S]*?)<\/forensic_data>/);
     let forensicData: ForensicOutput | null = null;
     if (forensicMatch) {
       try {
-        let cleanedJson = forensicMatch[1].trim();
-        // Remove markdown code fences if present
-        cleanedJson = cleanedJson.replace(/^```json\s*/, '').replace(/```$/, '').trim();
-        forensicData = JSON.parse(cleanedJson);
+        let rawJson = forensicMatch[1].trim();
+        // Clear potential markdown code blocks within the tag
+        rawJson = rawJson.replace(/^```json\s*/, '').replace(/```$/, '').trim();
+        forensicData = JSON.parse(rawJson);
       } catch (e) {
-        console.warn("Forensic parsing failed, attempting fuzzy recovery.");
-        const calcMatch = forensicMatch[1].match(/"liability_calc":\s*([\d.]+)/);
-        if (calcMatch) {
-            forensicData = {
-                liability_calc: parseFloat(calcMatch[1]),
-                confidence_score: 0.5,
-                code_validation: false,
-                strategic_disclaimer: "Partial audit data recovered from malformed payload."
-            };
+        console.warn("Forensic JSON recovery fallback triggered.");
+        const calc = content.match(/"liability_calc":\s*([\d.]+)/);
+        if (calc) {
+          forensicData = {
+            liability_calc: parseFloat(calc[1]),
+            confidence_score: 0.5,
+            code_validation: false,
+            strategic_disclaimer: "Partial forensic recovery: Manual audit recommended."
+          };
         }
       }
     }
     const cleanContent = content.replace(/<forensic_data>[\s\S]*?<\/forensic_data>/g, '').trim();
-    const strategicMatch = cleanContent.match(/Next Strategic Step:([\s\S]*)$/m);
+    const strategicMatch = cleanContent.match(/(?:Next Strategic Step|\[STRATEGY\]):([\s\S]*)$/i);
     const mainBody = strategicMatch ? cleanContent.replace(strategicMatch[0], '').trim() : cleanContent;
     const strategicStep = strategicMatch ? strategicMatch[1].trim() : null;
     return { mainBody, strategicStep, forensicData };
   };
   const renderTextContent = (text: string) => {
-    return text.split('`').map((part, i) => {
-      if (i % 2 === 1) {
-        const isMultiline = part.includes('\n');
+    if (!text) return null;
+    return text.split(/(`[^`]+`)/g).filter(Boolean).map((part, i) => {
+      if (part.startsWith('`') && part.endsWith('`')) {
+        const code = part.slice(1, -1);
+        const isMultiline = code.includes('\n');
         return (
           <code
             key={i}
             className={cn(
-              "bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-900/50",
-              isMultiline && "block p-4 my-2 overflow-x-auto whitespace-pre"
+              "bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-900/50 break-all",
+              isMultiline && "block p-4 my-2 overflow-x-auto whitespace-pre font-normal"
             )}
           >
-            {part}
+            {code}
           </code>
         );
       }
-      return part;
+      // Highlight PII tokens
+      return part.split(/(\[PSEUDO-[A-Z0-9]+\])/g).map((segment, j) => {
+        if (segment.startsWith('[PSEUDO-')) {
+          return (
+            <span key={`${i}-${j}`} className="text-emerald-600 dark:text-emerald-400 font-mono font-black bg-emerald-500/10 px-1 rounded border border-emerald-500/20">
+              {segment}
+            </span>
+          );
+        }
+        return segment;
+      });
     });
   };
   return (
@@ -164,7 +177,7 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
                   </div>
                   <div className={cn("flex flex-col gap-2 max-w-[85%]", m.role === 'user' ? "items-end" : "items-start")}>
                     <div className={cn(
-                      "p-4 rounded-2xl text-sm shadow-soft border",
+                      "p-4 rounded-2xl text-sm shadow-soft border overflow-hidden",
                       m.role === 'user' ? "bg-muted rounded-tr-none" : "bg-card rounded-tl-none border-l-4 border-l-blue-500"
                     )}>
                       <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans leading-relaxed text-foreground/90">

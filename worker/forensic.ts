@@ -22,11 +22,17 @@ export const DEFAULT_BENCHMARKS: Record<string, number> = {
 };
 /**
  * PURE FUNCTION: Calculate FMV Variance.
+ * Returns a low confidence score (0.2) if the CPT code is missing from benchmarks.
  */
 export function calculateFMV(cpt: string, billedAmount: number, benchmarks: Record<string, number>) {
   const basePrice = benchmarks[cpt] || DEFAULT_BENCHMARKS[cpt];
   if (!basePrice) {
-    return { variance: 0, baseline: 0, isOvercharge: false, confidence: 0.2 };
+    return { 
+      variance: 0, 
+      baseline: 0, 
+      isOvercharge: false, 
+      confidence: 0.2 // LOW confidence due to missing benchmark corpus
+    };
   }
   const fairBaseline = basePrice * STANDARD_FORENSIC_BASELINE;
   const variance = ((billedAmount - fairBaseline) / fairBaseline) * 100;
@@ -62,6 +68,7 @@ export function auditClaim(
   else if (variance >= DISPUTE_THRESHOLDS.MED) risk = 'MED';
   let tag = AuditResultTag.FMV_MATCH;
   if (variance > 0) tag = AuditResultTag.OVERCHARGE;
+  // No Surprises Act Protection Logic
   if (planState.networkStatus === 'Out-of-Network' && planState.planType === 'PPO') {
     tag = AuditResultTag.NSA_PROTECTED;
   }
