@@ -12,6 +12,7 @@ import { ShieldCheck, History, AlertTriangle, Activity, Lock, CheckCircle2, Sear
 import { chatService } from '@/lib/chat';
 import { useAppStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import type { InsuranceDocument, InsuranceState, AuditEntry } from '../../worker/types';
 export function HomePage() {
   const activeTab = useAppStore(s => s.activeTab);
@@ -42,7 +43,7 @@ export function HomePage() {
   };
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 30000); // 30s polling for reduced overhead
+    const interval = setInterval(fetchState, 30000);
     return () => clearInterval(interval);
   }, []);
   return (
@@ -106,7 +107,7 @@ export function HomePage() {
                         <History className="h-4 w-4 text-blue-600" />
                         Audit Pipeline
                       </div>
-                      <Badge variant="outline" className="h-4 text-[8px] font-bold">50 EVENTS</Badge>
+                      <Badge variant="outline" className="h-4 text-[8px] font-bold">{auditLogs.length} EVENTS</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="px-4">
@@ -114,8 +115,8 @@ export function HomePage() {
                       {auditLogs.slice(0, 4).map(log => (
                         <div key={log.id} className="group p-3 hover:bg-muted/30 rounded-lg border border-transparent hover:border-border transition-all space-y-1">
                           <div className="flex justify-between items-start">
-                            <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded uppercase", 
-                              log.severity === 'critical' ? 'bg-rose-500 text-white' : 
+                            <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded uppercase",
+                              log.severity === 'critical' ? 'bg-rose-500 text-white' :
                               log.severity === 'warning' ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'
                             )}>
                               {log.event}

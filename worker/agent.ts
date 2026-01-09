@@ -3,7 +3,7 @@ import type { Env } from './core-utils';
 import type { ChatState, InsuranceState, InsuranceDocument, AuditEntry } from './types';
 import { ChatHandler } from './chat';
 import { API_RESPONSES } from './config';
-import { createMessage, createStreamResponse, createEncoder } from './utils';
+import { createMessage } from './utils';
 export class ChatAgent extends Agent<Env, ChatState> {
   private chatHandler?: ChatHandler;
   initialState: ChatState = {
@@ -69,9 +69,10 @@ export class ChatAgent extends Agent<Env, ChatState> {
   private scrubPII(content: string): string {
     return content
       .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN-REDACTED]")
-      .replace(/\b\d{10}\b/g, "[PH-REDACTED]")
+      .replace(/\b\d{10,12}\b/g, "[ID-REDACTED]")
       .replace(/\b[\w.-]+@[\w.-]+\.\w{2,4}\b/g, "[EMAIL-REDACTED]")
-      .replace(/\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g, "[DOB-REDACTED]");
+      .replace(/\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g, "[DOB-REDACTED]")
+      .replace(/\b[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}\b/g, "[POLICY-REDACTED]");
   }
   private async logAuditEvent(event: string, detail: string, severity: 'info' | 'warning' | 'critical' = 'info'): Promise<void> {
     const entry: AuditEntry = {
@@ -97,7 +98,7 @@ export class ChatAgent extends Agent<Env, ChatState> {
     return Response.json({ success: true, data: this.state });
   }
   private async handleChatMessage(body: { message: string; model?: string; stream?: boolean }): Promise<Response> {
-    const { message, model, stream } = body;
+    const { message, model } = body;
     if (!message?.trim()) return Response.json({ success: false, error: API_RESPONSES.MISSING_MESSAGE }, { status: 400 });
     if (model && model !== this.state.model) {
       this.setState({ ...this.state, model });
@@ -106,19 +107,22 @@ export class ChatAgent extends Agent<Env, ChatState> {
     const userMessage = createMessage('user', message.trim());
     this.setState({ ...this.state, messages: [...this.state.messages, userMessage], isProcessing: true });
     try {
-      const response = await this.chatHandler!.processMessage(
+      if (!this.chatHandler) {
+        this.chatHandler = new ChatHandler(this.env.CF_AI_BASE_URL, this.env.CF_AI_API_KEY, this.state.model);
+      }
+      const response = await this.chatHandler.processMessage(
         message,
         this.state.messages,
         this.state.documents,
         this.state.insuranceState
       );
-      // Deterministic check for liability
       if (this.state.insuranceState && response.content.includes('$')) {
-        const costMatch = response.content.match(/\$\d+(,\d+)?(\.\d+)?/);
+        const costMatch = response.content.match(/\$\d{1,3}(,\d{3})*(\.\d{2})?/);
         if (costMatch) {
           const rawVal = parseFloat(costMatch[0].replace(/[$,]/g, ''));
-          if (rawVal > (this.state.insuranceState.oopMax - this.state.insuranceState.oopUsed)) {
-            await this.logAuditEvent("Liability Flag", "AI suggested liability exceeds remaining OOP Max. Review suggested.", "warning");
+          const remainingLimit = this.state.insuranceState.oopMax - this.state.insuranceState.oopUsed;
+          if (rawVal > remainingLimit) {
+            await this.logAuditEvent("Liability Flag", `Calculated liability ($${rawVal}) exceeds remaining OOP Max ($${remainingLimit}). High-priority review required.`, "critical");
           }
         }
       }

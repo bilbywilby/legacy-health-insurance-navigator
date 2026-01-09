@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, FileSearch, ShieldCheck, SearchCode, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Bot, User, FileSearch, ShieldCheck, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -16,7 +16,6 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
   const [showForensics, setShowForensics] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -24,9 +23,9 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
   }, []);
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+      scrollRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
-  }, [messages, streamingContent]);
+  }, [messages, loading]);
   const loadMessages = async () => {
     const res = await chatService.getMessages();
     if (res.success && res.data) {
@@ -38,13 +37,11 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
     const userMsg = input.trim();
     setInput('');
     setLoading(true);
-    setStreamingContent('');
     try {
-      await chatService.sendMessage(userMsg, undefined, (chunk) => {
-        setStreamingContent(prev => prev + chunk);
-      });
-      await loadMessages();
-      setStreamingContent('');
+      const res = await chatService.sendMessage(userMsg);
+      if (res.success && res.data) {
+        setMessages(res.data.messages);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -56,12 +53,22 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
     let forensicData: ForensicOutput | null = null;
     if (forensicMatch) {
       try {
-        forensicData = JSON.parse(forensicMatch[1]);
-      } catch (e) { /* silent */ }
+        const cleanedJson = forensicMatch[1].trim();
+        forensicData = JSON.parse(cleanedJson);
+      } catch (e) {
+        console.warn("Forensic parsing failed, attempting fuzzy recovery.");
+        const calcMatch = forensicMatch[1].match(/"liability_calc":\s*([\d.]+)/);
+        if (calcMatch) {
+            forensicData = {
+                liability_calc: parseFloat(calcMatch[1]),
+                confidence_score: 0.5,
+                code_validation: false,
+                strategic_disclaimer: "Partial audit data recovered from malformed payload."
+            };
+        }
+      }
     }
-    // Strip tags for display
     const cleanContent = content.replace(/<forensic_data>[\s\S]*?<\/forensic_data>/g, '').trim();
-    // Highlight Strategic Step
     const strategicMatch = cleanContent.match(/Next Strategic Step:([\s\S]*)$/m);
     const mainBody = strategicMatch ? cleanContent.replace(strategicMatch[0], '').trim() : cleanContent;
     const strategicStep = strategicMatch ? strategicMatch[1].trim() : null;
@@ -70,8 +77,15 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
   const renderTextContent = (text: string) => {
     return text.split('`').map((part, i) => {
       if (i % 2 === 1) {
+        const isMultiline = part.includes('\n');
         return (
-          <code key={i} className="bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-900/50">
+          <code 
+            key={i} 
+            className={cn(
+              "bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded font-mono text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-900/50",
+              isMultiline && "block p-4 my-2 overflow-x-auto whitespace-pre"
+            )}
+          >
             {part}
           </code>
         );
@@ -87,9 +101,9 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
           <span className="font-semibold text-sm">Forensic Audit Console</span>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-8 text-[10px] font-bold uppercase tracking-tighter"
             onClick={() => setShowForensics(!showForensics)}
           >
@@ -130,12 +144,23 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
               const { mainBody, strategicStep, forensicData } = parseMessageContent(m.content);
               const isNsa = m.content.toLowerCase().includes('no surprises act') || m.content.toLowerCase().includes('nsa');
               return (
-                <motion.div key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={cn("flex gap-4", m.role === 'user' ? "flex-row-reverse" : "flex-row")}>
-                  <div className={cn("h-8 w-8 rounded-full flex items-center justify-center shrink-0 border shadow-sm", m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white border-blue-700")}>
+                <motion.div 
+                  key={m.id} 
+                  initial={{ opacity: 0, y: 10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  className={cn("flex gap-4", m.role === 'user' ? "flex-row-reverse" : "flex-row")}
+                >
+                  <div className={cn(
+                    "h-8 w-8 rounded-full flex items-center justify-center shrink-0 border shadow-sm", 
+                    m.role === 'user' ? "bg-primary text-primary-foreground" : "bg-blue-600 text-white border-blue-700"
+                  )}>
                     {m.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                   </div>
                   <div className={cn("flex flex-col gap-2 max-w-[85%]", m.role === 'user' ? "items-end" : "items-start")}>
-                    <div className={cn("p-4 rounded-2xl text-sm shadow-soft border", m.role === 'user' ? "bg-muted rounded-tr-none" : "bg-card rounded-tl-none border-l-4 border-l-blue-500")}>
+                    <div className={cn(
+                      "p-4 rounded-2xl text-sm shadow-soft border", 
+                      m.role === 'user' ? "bg-muted rounded-tr-none" : "bg-card rounded-tl-none border-l-4 border-l-blue-500"
+                    )}>
                       <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap font-sans leading-relaxed text-foreground/90">
                         {renderTextContent(mainBody)}
                       </div>
@@ -159,6 +184,17 @@ export function ChatInterface({ activeDocuments = [] }: ChatInterfaceProps) {
               );
             })}
           </AnimatePresence>
+          {loading && (
+            <div className="flex gap-4">
+              <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center border border-blue-700">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="p-4 rounded-2xl bg-card border-l-4 border-l-blue-500 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                <span className="text-xs text-muted-foreground font-medium italic">Forensic engine compiling audit...</span>
+              </div>
+            </div>
+          )}
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
